@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { Plus, Package, Sparkles, Database, TrendingUp, Search } from 'lucide-react'
 import { getStockSummary, getFinishedGoodsInventory, addStockTransaction, getStockTransactions } from '../services/inventoryService'
-import { getLatestRate } from '../services/rateService'
+import { getLatestRate, getRateHistory } from '../services/rateService'
+import { getLiabilityLedgers } from '../services/accountingService'
 import { StockSummary, Product, StockType, StockItemType, StockTransaction } from '../types'
 
 export default function StockManagement() {
@@ -14,6 +15,7 @@ export default function StockManagement() {
     })
     const [finishedGoods, setFinishedGoods] = useState<Product[]>([])
     const [transactions, setTransactions] = useState<StockTransaction[]>([])
+    const [vendors, setVendors] = useState<{ id: string, name: string }[]>([])
     const [activeTab, setActiveTab] = useState<'RAW' | 'WASTAGE' | 'FINISHED'>('FINISHED')
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState('')
@@ -29,36 +31,80 @@ export default function StockManagement() {
         source: '',
         rate_at_time: '',
         wastage_percent: '',
-        note: ''
+        note: '',
+        record_purchase: false,
+        payment_amount: '',
+        payment_mode: 'Cash',
+        vendorId: ''
     })
 
-    const loadData = async () => {
-        try {
-            setLoading(true)
-            const rate = await getLatestRate()
-            const silverRate = rate ? (rate.rate_1g * 1000) : 75000 // Use 1kg rate as baseline
+    const [silverRate, setSilverRate] = useState(75000)
+    const [rateChange, setRateChange] = useState(0)
 
-            const [stockSummary, fgInventory, recentTransactions] = await Promise.all([
+    const loadData = useCallback(async () => {
+        try {
+            // Don't set loading if we already have data (from cache)
+            if (summary.total_value === 0 && finishedGoods.length === 0) {
+                setLoading(true)
+            }
+
+            const [rate, rateHist] = await Promise.all([
+                getLatestRate(),
+                getRateHistory()
+            ])
+
+            const currentRateKg = rate ? (rate.rate_1g * 1000) : 75000
+            setSilverRate(currentRateKg)
+
+            // Calculate trend based on last 2 entries
+            if (rateHist && rateHist.length > 1) {
+                const prev = rateHist[rateHist.length - 2].rate_1g * 1000
+                const change = ((currentRateKg - prev) / prev) * 100
+                setRateChange(change)
+            }
+
+            // Determine which transactions to fetch based on Active Tab
+            let transactionType: StockItemType | undefined = undefined;
+            if (activeTab === 'RAW') transactionType = 'RAW_SILVER';
+            if (activeTab === 'WASTAGE') transactionType = 'WASTAGE';
+            if (activeTab === 'FINISHED') transactionType = 'FINISHED_GOODS';
+
+            const promises: Promise<any>[] = [
                 getStockSummary(silverRate),
                 getFinishedGoodsInventory(),
-                getStockTransactions()
-            ])
+                getLiabilityLedgers()
+            ];
+
+            // Only fetch transactions if we are in a tab that displays them
+            if (activeTab === 'RAW' || activeTab === 'WASTAGE' || activeTab === 'FINISHED') {
+                promises.push(getStockTransactions(transactionType));
+            } else {
+                promises.push(Promise.resolve([]));
+            }
+
+            const [stockSummary, fgInventory, vendorList, recentTransactions] = await Promise.all(promises)
 
             setSummary(stockSummary)
             setFinishedGoods(fgInventory)
-            setTransactions(recentTransactions)
+            setVendors(vendorList)
+
+            // Only update transactions if we fetched them
+            // Update transactions regardless of tab if fetched
+            if (activeTab === 'RAW' || activeTab === 'WASTAGE' || activeTab === 'FINISHED') {
+                setTransactions(recentTransactions)
+            }
         } catch (err) {
             console.error('Failed to load stock info', err)
         } finally {
             setLoading(false)
         }
-    }
+    }, [summary.total_value, finishedGoods.length, activeTab])
 
     useEffect(() => {
         loadData()
-    }, [])
+    }, [loadData])
 
-    const handleAddEntry = async (e: React.FormEvent) => {
+    const handleAddEntry = useCallback(async (e: React.FormEvent) => {
         e.preventDefault()
         try {
             await addStockTransaction({
@@ -72,21 +118,49 @@ export default function StockManagement() {
                 source: form.source || undefined,
                 rate_at_time: form.rate_at_time ? Number(form.rate_at_time) : undefined,
                 wastage_percent: form.wastage_percent ? Number(form.wastage_percent) : undefined
+            }, {
+                amount: form.record_purchase ? Number(form.payment_amount) : 0,
+                mode: form.record_purchase ? (form.payment_mode || 'Cash') : '',
+                vendorId: form.record_purchase ? form.vendorId : undefined
             })
             setShowModal(false)
-            setForm({ type: 'RAW_IN', item_type: 'RAW_SILVER', quantity: '', weight_gm: '', product_id: '', source: '', rate_at_time: '', wastage_percent: '', note: '' })
+            setForm({
+                type: 'RAW_IN',
+                item_type: 'RAW_SILVER',
+                quantity: '',
+                weight_gm: '',
+                product_id: '',
+                source: '',
+                rate_at_time: '',
+                wastage_percent: '',
+                note: '',
+                record_purchase: false,
+                payment_amount: '',
+                payment_mode: 'Cash',
+                vendorId: ''
+            })
             loadData()
         } catch (err) {
             alert('Stock update fail ho gaya bhai!')
         }
-    }
+    }, [form, loadData])
 
-    if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Stock data load ho raha hai...</div>
+    // Show loading only on first load when there's no data
+    const isInitialLoad = loading && summary.total_value === 0 && finishedGoods.length === 0
 
-    const filteredFG = finishedGoods.filter(p =>
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.id.toLowerCase().includes(searchTerm.toLowerCase())
+
+    const filteredFG = useMemo(() =>
+        finishedGoods.filter(p =>
+            p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            p.id.toLowerCase().includes(searchTerm.toLowerCase())
+        ),
+        [finishedGoods, searchTerm]
     )
+
+    // Only show loading on very first load
+    if (isInitialLoad) {
+        return <div style={{ padding: '2rem', textAlign: 'center' }}>Stock data load ho raha hai...</div>
+    }
 
     return (
         <div style={{ maxWidth: '1200px', margin: '0 auto', paddingBottom: '3rem' }}>
@@ -100,7 +174,7 @@ export default function StockManagement() {
                 </div>
                 <button
                     onClick={() => setShowModal(true)}
-                    style={{ ...primaryBtnStyle, background: '#1e293b', color: 'white' }}
+                    style={{ ...primaryBtnStyle, background: 'var(--color-primary)', color: 'white' }}
                 >
                     <Plus size={18} /> Add Stock Entry
                 </button>
@@ -112,26 +186,28 @@ export default function StockManagement() {
                     title="Raw Silver Stock"
                     value={`${(summary.raw_silver / 1000).toFixed(2)} kg`}
                     subTitle={`Value: ₹${(summary.total_value * (summary.raw_silver / (summary.raw_silver + summary.wastage + summary.finished_goods_weight || 1))).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
-                    icon={<Database size={24} color="#3b82f6" />}
+                    icon={<Database size={24} color="var(--color-info)" />}
                 />
                 <SummaryCard
                     title="Wastage (Silver Accrued)"
                     value={`${(summary.wastage / 1000).toFixed(2)} kg`}
                     subTitle={`Value: ₹${(summary.total_value * (summary.wastage / (summary.raw_silver + summary.wastage + summary.finished_goods_weight || 1))).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
-                    icon={<Sparkles size={24} color="#f59e0b" />}
+                    icon={<Sparkles size={24} color="var(--color-warning)" />}
                 />
                 <SummaryCard
                     title="Finished Goods"
                     value={`${summary.finished_goods_count} pcs`}
                     subTitle={`Silver Weight: ${(summary.finished_goods_weight / 1000).toFixed(2)} kg`}
-                    icon={<Package size={24} color="#10b981" />}
+                    icon={<Package size={24} color="var(--color-success)" />}
                 />
                 <SummaryCard
                     title="Total Stock Value"
                     value={`₹${(summary.total_value / 100000).toFixed(1)}L`}
                     subTitle="At current rate"
                     icon={<TrendingUp size={24} color="#6366f1" />}
-                    trend="+2.4%"
+                    trend={`${rateChange >= 0 ? '+' : ''}${rateChange.toFixed(1)}%`}
+                    trendColor={rateChange >= 0 ? '#10b981' : '#ef4444'}
+                    trendBg={rateChange >= 0 ? '#ecfdf5' : '#fef2f2'}
                 />
             </div>
 
@@ -162,10 +238,10 @@ export default function StockManagement() {
                             </div>
                         </div>
 
-                        <div style={{ overflowX: 'auto' }}>
+                        <div style={{ overflowX: 'auto', marginBottom: '3rem' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
-                                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                                    <tr style={{ background: 'var(--color-bg)', borderBottom: '1px solid var(--color-border)' }}>
                                         <th style={thStyle}>Product ID</th>
                                         <th style={thStyle}>Product Name</th>
                                         <th style={{ ...thStyle, textAlign: 'right' }}>Quantity</th>
@@ -191,6 +267,68 @@ export default function StockManagement() {
                                 </tbody>
                             </table>
                         </div>
+
+                        {/* Recent Finished Goods Movements History */}
+                        <div style={{ borderTop: '2px solid #f1f5f9', paddingTop: '2rem' }}>
+                            <div style={{ marginBottom: '1.5rem' }}>
+                                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>Recent Production & Sales History</h3>
+                                <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>तैयार माल की आवाजाही का इतिहास</p>
+                            </div>
+                            <div style={{ overflowX: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid var(--color-border)' }}>
+                                            <th style={thStyle}>Date</th>
+                                            <th style={thStyle}>Type</th>
+                                            <th style={thStyle}>Product</th>
+                                            <th style={{ ...thStyle, textAlign: 'right' }}>Qty</th>
+                                            <th style={{ ...thStyle, textAlign: 'right' }}>Weight</th>
+                                            <th style={thStyle}>Source/Note</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {transactions
+                                            .filter(t => t.item_type === 'FINISHED_GOODS')
+                                            .filter(t => {
+                                                const product = finishedGoods.find(p => p.id === t.product_id);
+                                                return !searchTerm ||
+                                                    product?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                                    t.note?.toLowerCase().includes(searchTerm.toLowerCase());
+                                            })
+                                            .map(t => {
+                                                const product = finishedGoods.find(p => p.id === t.product_id);
+                                                const isIn = t.type === 'PRODUCTION' || t.type === 'RAW_IN';
+                                                return (
+                                                    <tr key={t.id} style={{ borderBottom: '1px solid #f8fafc' }}>
+                                                        <td style={tdStyle}>{new Date(t.date).toLocaleDateString()}</td>
+                                                        <td style={tdStyle}>{getStatusBadge(t.type)}</td>
+                                                        <td style={tdStyle}>
+                                                            <div style={{ fontWeight: 600 }}>{product?.name || 'Unknown Product'}</div>
+                                                            <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>ID: {t.product_id?.slice(0, 8)}</div>
+                                                        </td>
+                                                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: isIn ? '#059669' : '#e11d48' }}>
+                                                            {isIn ? '+' : '-'}{t.quantity}
+                                                        </td>
+                                                        <td style={{ ...tdStyle, textAlign: 'right' }}>
+                                                            {t.weight_gm ? `${t.weight_gm}g` : '-'}
+                                                        </td>
+                                                        <td style={{ ...tdStyle, fontSize: '0.8rem' }}>
+                                                            <div style={{ fontWeight: 500 }}>{t.source || '-'}</div>
+                                                            <div style={{ color: '#94a3b8' }}>{t.note || ''}</div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        }
+                                        {transactions.filter(t => t.item_type === 'FINISHED_GOODS').length === 0 && (
+                                            <tr>
+                                                <td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>No movement history yet.</td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 )}
 
@@ -203,7 +341,7 @@ export default function StockManagement() {
                         <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
-                                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                                    <tr style={{ background: 'var(--color-bg)', borderBottom: '1px solid var(--color-border)' }}>
                                         <th style={thStyle}>Date</th>
                                         <th style={thStyle}>Type</th>
                                         <th style={thStyle}>Source</th>
@@ -215,6 +353,7 @@ export default function StockManagement() {
                                 <tbody>
                                     {transactions
                                         .filter(t => t.item_type === 'RAW_SILVER')
+                                        .filter(t => !searchTerm || t.note?.toLowerCase().includes(searchTerm.toLowerCase()) || t.source?.toLowerCase().includes(searchTerm.toLowerCase()))
                                         .map(t => {
                                             const isIngoing = t.type === 'RAW_IN';
                                             const value = (t.quantity || 0) * (t.rate_at_time || 0);
@@ -253,7 +392,7 @@ export default function StockManagement() {
                         <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
-                                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                                    <tr style={{ background: 'var(--color-bg)', borderBottom: '1px solid var(--color-border)' }}>
                                         <th style={thStyle}>Date</th>
                                         <th style={thStyle}>Source Order</th>
                                         <th style={{ ...thStyle, textAlign: 'right' }}>Wastage %</th>
@@ -265,6 +404,7 @@ export default function StockManagement() {
                                 <tbody>
                                     {transactions
                                         .filter(t => t.item_type === 'WASTAGE')
+                                        .filter(t => !searchTerm || t.note?.toLowerCase().includes(searchTerm.toLowerCase()))
                                         .map(t => {
                                             const value = (t.quantity || 0) * (t.rate_at_time || 0);
                                             return (
@@ -433,6 +573,67 @@ export default function StockManagement() {
                                 />
                             </div>
 
+                            {/* Financial Integration Section */}
+                            {/* Financial Integration Section - Show only for Purchase operations */}
+                            {(form.type === 'RAW_IN' || (form.type === 'PRODUCTION' && form.item_type === 'FINISHED_GOODS')) && (
+                                <div style={{ marginBottom: '2rem', padding: '1.5rem', background: '#ecfdf5', borderRadius: '16px', border: '1px solid #10b98144' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.95rem', fontWeight: 700, color: '#047857', cursor: 'pointer', marginBottom: '1rem' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={form.record_purchase}
+                                            onChange={(e) => setForm({ ...form, record_purchase: e.target.checked })}
+                                            style={{ width: '18px', height: '18px', accentColor: '#10b981' }}
+                                        />
+                                        Record as Expense/Credit / खर्च या उधारी में दर्ज करें
+                                    </label>
+
+                                    {form.record_purchase && (
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', paddingLeft: '2rem' }}>
+                                            <div>
+                                                <label style={{ ...labelStyle, color: '#047857' }}>Payment Amount (₹)</label>
+                                                <input
+                                                    type="number"
+                                                    value={form.payment_amount}
+                                                    onChange={(e) => setForm({ ...form, payment_amount: e.target.value })}
+                                                    placeholder="Kitna paisa diya/udhaar?"
+                                                    style={{ ...inputStyle, borderColor: '#10b981' }}
+                                                    required
+                                                />
+                                            </div>
+                                            <div>
+                                                <label style={{ ...labelStyle, color: '#047857' }}>Payment Mode</label>
+                                                <select
+                                                    value={form.payment_mode}
+                                                    onChange={(e) => setForm({ ...form, payment_mode: e.target.value })}
+                                                    style={{ ...inputStyle, borderColor: '#10b981' }}
+                                                >
+                                                    <option>Cash</option>
+                                                    <option>Bank Transfer</option>
+                                                    <option>UPI</option>
+                                                    <option value="Credit">Credit (Udhaar)</option>
+                                                </select>
+                                            </div>
+
+                                            {form.payment_mode === 'Credit' && (
+                                                <div style={{ gridColumn: '1 / -1' }}>
+                                                    <label style={{ ...labelStyle, color: '#047857' }}>Select Vendor (Supplier/Karigar)</label>
+                                                    <select
+                                                        value={form.vendorId}
+                                                        onChange={(e) => setForm({ ...form, vendorId: e.target.value })}
+                                                        style={{ ...inputStyle, borderColor: '#10b981' }}
+                                                        required
+                                                    >
+                                                        <option value="">-- Choose Vendor --</option>
+                                                        {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                                    </select>
+                                                    <p style={{ margin: '0.4rem 0 0', fontSize: '0.75rem', color: '#047857' }}>Paisa kisko dena hai</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             <div style={{ display: 'flex', gap: '1.5rem', marginTop: '1.5rem', padding: '0 0.5rem' }}>
                                 <button
                                     type="button"
@@ -443,7 +644,7 @@ export default function StockManagement() {
                                 </button>
                                 <button
                                     type="submit"
-                                    style={{ ...primaryBtnStyle, flex: 1, background: '#1e293b', color: 'white', padding: '1.1rem', fontWeight: 700 }}
+                                    style={{ ...primaryBtnStyle, flex: 1, background: 'var(--color-primary)', color: 'white', padding: '1.1rem', fontWeight: 700 }}
                                 >
                                     Save Transaction / सुरक्षित करें
                                 </button>

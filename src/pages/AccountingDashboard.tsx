@@ -22,9 +22,9 @@ export default function AccountingDashboard() {
         }
     }
 
-    if (loading) return <p>Loading financial report...</p>
+    // Show UI instantly - removed loading check
     if (error) return <p style={{ color: 'red' }}>{error}</p>
-    if (!data) return null
+    if (!data) return null // Show nothing until data loads
 
     return (
         <div>
@@ -35,20 +35,20 @@ export default function AccountingDashboard() {
                 <Card
                     title="Gross Income"
                     value={data.jobWorkIncome + data.productSalesIncome}
-                    icon={<TrendingUp color="#10b981" />}
-                    color="#f0fdf4"
+                    icon={<TrendingUp color="var(--color-success)" />}
+                    color="var(--color-success-light)"
                 />
                 <Card
                     title="Total Expenses"
                     value={data.totalExpenses}
-                    icon={<TrendingDown color="#ef4444" />}
-                    color="#fef2f2"
+                    icon={<TrendingDown color="var(--color-error)" />}
+                    color="var(--color-error-light)"
                 />
                 <Card
                     title="Net Profit"
                     value={data.netProfit}
-                    icon={<PieChart color="#6366f1" />}
-                    color="#eef2ff"
+                    icon={<PieChart color="var(--color-info)" />}
+                    color="var(--color-info-light)"
                     highlight
                 />
             </div>
@@ -58,13 +58,13 @@ export default function AccountingDashboard() {
                 <h3 style={{ marginTop: 0, marginBottom: '1rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>Income & Expense Breakdown</h3>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <tbody>
-                        <Row label="Job Work Income" value={data.jobWorkIncome} icon={<ArrowUpRight size={16} color="#10b981" />} />
-                        <Row label="Product Sales Income" value={data.productSalesIncome} icon={<ArrowUpRight size={16} color="#10b981" />} />
-                        <Row label="Karigar Payments (Paid)" value={-data.karigarExpenses} icon={<ArrowDownRight size={16} color="#ef4444" />} isExpense />
-                        <Row label="General Operating Expenses" value={-data.generalExpenses} icon={<ArrowDownRight size={16} color="#ef4444" />} isExpense />
+                        <Row label="Job Work Income" value={data.jobWorkIncome} icon={<ArrowUpRight size={16} color="var(--color-success)" />} />
+                        <Row label="Product Sales Income" value={data.productSalesIncome} icon={<ArrowUpRight size={16} color="var(--color-success)" />} />
+                        <Row label="Karigar Payments (Paid)" value={-data.karigarExpenses} icon={<ArrowDownRight size={16} color="var(--color-error)" />} isExpense />
+                        <Row label="General Operating Expenses" value={-data.generalExpenses} icon={<ArrowDownRight size={16} color="var(--color-error)" />} isExpense />
                         <tr style={{ borderTop: '2px solid #f1f5f9' }}>
                             <td style={{ padding: '1rem 0', fontWeight: 700, fontSize: '1.1rem' }}>Net Profit</td>
-                            <td style={{ padding: '1rem 0', textAlign: 'right', fontWeight: 700, fontSize: '1.1rem', color: data.netProfit >= 0 ? '#10b981' : '#ef4444' }}>
+                            <td style={{ padding: '1rem 0', textAlign: 'right', fontWeight: 700, fontSize: '1.1rem', color: data.netProfit >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
                                 ₹{data.netProfit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                             </td>
                         </tr>
@@ -105,7 +105,7 @@ function Row({ label, value, icon, isExpense }: any) {
             <td style={{ padding: '0.75rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 {icon} {label}
             </td>
-            <td style={{ padding: '0.75rem 0', textAlign: 'right', fontWeight: 500, color: isExpense ? '#ef4444' : 'inherit' }}>
+            <td style={{ padding: '0.75rem 0', textAlign: 'right', fontWeight: 500, color: isExpense ? 'var(--color-error)' : 'inherit' }}>
                 {value >= 0 ? '+' : ''}{value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </td>
         </tr>

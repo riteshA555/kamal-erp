@@ -5,11 +5,16 @@ import { createOrder } from '../services/orderService'
 import { getJobWorkItems } from '../services/jobWorkService'
 import { getProducts } from '../services/productService'
 import { getKarigars, Karigar } from '../services/karigarService'
+import { getLatestRate, SilverRate } from '../services/rateService'
 import { MaterialType, JobWorkItem, Product } from '../types'
-import { Trash2, Plus, Save, Info, Package } from 'lucide-react'
-
-// Constants for unit options
-const UNITS = ['KG', 'Piece', 'Jodi']
+import { supabase } from '../supabaseClient'
+import {
+    Trash2, Plus, ShoppingCart, User, Package, Hammer,
+    CheckCircle2, AlertTriangle, Loader2, ArrowRight, Printer, Share2, X
+} from 'lucide-react'
+import { formatIndianRupees } from '../utils/formatters'
+import { getSettings } from '../services/settingsService'
+import { BusinessProfileSettings, GSTSettings } from '../types/settings'
 
 type FormValues = {
     customer_name: string
@@ -37,131 +42,252 @@ export default function OrderCreate() {
     const [submissionError, setSubmissionError] = useState('')
     const [jobWorkItems, setJobWorkItems] = useState<JobWorkItem[]>([])
     const [products, setProducts] = useState<Product[]>([])
-    const [loadingItems, setLoadingItems] = useState(true)
-    const [fetchError, setFetchError] = useState('')
     const [karigars, setKarigars] = useState<Karigar[]>([])
 
-    const { register, control, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormValues>({
+    // Business Info State
+    const [businessProfile, setBusinessProfile] = useState<BusinessProfileSettings | null>(null)
+    const [gstSettings, setGstSettings] = useState<GSTSettings | null>(null)
+
+    // Success Modal State
+    const [successData, setSuccessData] = useState<{
+        open: boolean,
+        orderId: string,
+        customer: string,
+        total: number,
+        items: any[],
+        date: string
+    } | null>(null)
+
+    // Workbench State
+    const [draftItem, setDraftItem] = useState<{
+        description: string
+        quantity: number
+        unit: string
+        rate: number
+        product_id?: string
+        weight?: number
+        wastage_percent?: number
+        labour_cost?: number
+        has_karigar?: boolean
+        karigar_id?: string
+        karigar_rate?: number
+        karigar_quantity?: number
+    }>({ description: '', quantity: 0, unit: 'KG', rate: 0 })
+
+    const [draftError, setDraftError] = useState('')
+
+    // Multi-Karigar State
+    const [karigarSplits, setKarigarSplits] = useState<{ karigar_id: string, name: string, quantity: number }[]>([])
+
+    const { register, control, handleSubmit, watch, setValue, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
         defaultValues: {
             order_date: new Date().toISOString().split('T')[0],
-            material_type: undefined,
+            material_type: 'CLIENT',
             gst_enabled: false,
-            items: [{ description: '', quantity: 0, unit: 'KG', rate: 0 }]
+            items: []
         }
     })
-
-    // Independent Data Fetching
-    useEffect(() => {
-        let mounted = true
-
-        const loadData = async () => {
-            setLoadingItems(true)
-            setFetchError('')
-
-            // 1. Fetch Job Work Items
-            try {
-                const jwData = await getJobWorkItems()
-                if (mounted) setJobWorkItems(jwData)
-            } catch (err: any) {
-                console.error('Error fetching Job Work Items:', err)
-                if (mounted) setFetchError(prev => prev + ` Job Work Error: ${err.message}`)
-            }
-
-            // 2. Fetch Products
-            try {
-                const prodData = await getProducts()
-                if (mounted) setProducts(prodData)
-            } catch (err: any) {
-                console.error('Error fetching Products:', err)
-                // Product fetch failure shouldn't block Job Work if possible, but let's notify
-                if (mounted) setFetchError(prev => prev + ` Product Error: ${err.message}`)
-            }
-
-            // 3. Fetch Karigars
-            try {
-                const karigarData = await getKarigars()
-                if (mounted) setKarigars(karigarData)
-            } catch (err: any) {
-                console.error('Error fetching Karigars:', err)
-            }
-
-            if (mounted) setLoadingItems(false)
-        }
-
-        loadData()
-
-        return () => { mounted = false }
-    }, [])
 
     const { fields, append, remove, replace } = useFieldArray({
         control,
         name: 'items'
     })
 
+    const [silverRate, setSilverRate] = useState<SilverRate | null>(null)
+
+    // Initial Load
+    useEffect(() => {
+        let mounted = true
+        const loadData = async () => {
+            try {
+                const [jwData, prodData, karigarData, businessData, gstData, currentRate] = await Promise.all([
+                    getJobWorkItems(),
+                    getProducts(),
+                    getKarigars(),
+                    getSettings<BusinessProfileSettings>('business_profile'),
+                    getSettings<GSTSettings>('gst_settings'),
+                    getLatestRate()
+                ])
+                if (mounted) {
+                    setJobWorkItems(jwData)
+                    setProducts(prodData)
+                    setKarigars(karigarData)
+                    setBusinessProfile(businessData)
+                    setGstSettings(gstData)
+                    setSilverRate(currentRate)
+                }
+            } catch (err: any) {
+                console.error('Error fetching catalog data:', err)
+            }
+        }
+        loadData()
+        return () => { mounted = false }
+    }, [])
+
+    // REAL-TIME STOCK UPDATES (Zero Latency)
+    useEffect(() => {
+        const channel = supabase
+            .channel('product_stock_changes')
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'products' },
+                (payload) => {
+                    const updatedProduct = payload.new as Product
+                    setProducts(prevProducts =>
+                        prevProducts.map(p => p.id === updatedProduct.id ? { ...p, current_stock: updatedProduct.current_stock } : p)
+                    )
+                }
+            )
+            .subscribe()
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
+    }, [])
+
     const materialType = watch('material_type')
     const items = watch('items')
     const gstEnabled = watch('gst_enabled')
+    const customerName = watch('customer_name')
 
-    const subtotal = items.reduce((sum, item) => {
-        return sum + (Number(item.quantity || 0) * Number(item.rate || 0))
-    }, 0)
-
-    const gstRate = materialType === 'CLIENT' ? 5 : 3
+    // Totals
+    const subtotal = items.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.rate || 0)), 0)
+    const gstRate = materialType === 'CLIENT'
+        ? (gstSettings?.defaultGstRateJobWork ?? 5)
+        : (gstSettings?.defaultGstRateSale ?? 3)
     const gstAmount = gstEnabled ? (subtotal * gstRate) / 100 : 0
     const grandTotal = subtotal + gstAmount
 
-    // Default GST logic
     useEffect(() => {
-        if (materialType === 'CLIENT') {
-            setValue('gst_enabled', false)
-        } else if (materialType === 'OWN') {
-            setValue('gst_enabled', true)
-        }
+        if (materialType === 'CLIENT') setValue('gst_enabled', false)
+        else if (materialType === 'OWN') setValue('gst_enabled', true)
+
+        setDraftItem({ description: '', quantity: 0, unit: 'KG', rate: 0 })
+        setDraftError('')
+        setKarigarSplits([])
     }, [materialType, setValue])
 
-    // Handle Job Work Selection - Side Effects
-    const handleJobWorkSelect = (index: number, itemName: string) => {
-        // ID is handled by register
-        const selectedItem = jobWorkItems.find(i => i.name === itemName)
-        if (selectedItem) {
-            setValue(`items.${index}.unit`, selectedItem.unit)
-            setValue(`items.${index}.rate`, selectedItem.default_rate)
-            setValue(`items.${index}.product_id`, undefined) // Clear product specific
+    // --- HANDLERS ---
+    const handleDraftItemChange = (field: string, value: any) => {
+        setDraftItem(prev => ({ ...prev, [field]: value }))
+        setDraftError('')
+
+        // Auto-fill logic
+        if (field === 'description' && materialType === 'CLIENT') {
+            const jw = jobWorkItems.find(j => j.name === value)
+            if (jw) {
+                setDraftItem(prev => ({ ...prev, description: jw.name, unit: jw.unit, rate: jw.default_rate, product_id: undefined }))
+            }
+        }
+        if (field === 'product_id' && materialType === 'OWN') {
+            const prod = products.find(p => p.id === value)
+            if (prod) {
+                setDraftItem(prev => ({
+                    ...prev,
+                    product_id: prod.id,
+                    description: prod.name,
+                    unit: 'Piece',
+                    rate: prod.labour_cost,
+                    weight: prod.default_weight,
+                    wastage_percent: prod.wastage_percent,
+                    labour_cost: prod.labour_cost
+                }))
+            }
+        }
+        if (field === 'has_karigar' && !value) {
+            setDraftItem(prev => ({ ...prev, has_karigar: false, karigar_id: undefined, karigar_rate: 0, karigar_quantity: 0 }))
+            setKarigarSplits([])
+        }
+        if (field === 'karigar_id') {
+            const k = karigars.find(kg => kg.id === value)
+            if (k) setDraftItem(prev => ({ ...prev, karigar_id: value, karigar_rate: k.default_rate, karigar_quantity: prev.quantity }))
         }
     }
 
-    // Handle Product Selection - Side Effects
-    const handleProductSelect = (index: number, productId: string) => {
-        // ID is handled by register
-        const selectedProduct = products.find(p => p.id === productId)
+    // LIVE VALIDATION HELPER
+    const getStockStatus = () => {
+        if (materialType !== 'OWN' || !draftItem.product_id) return null
+        const prod = products.find(p => p.id === draftItem.product_id)
+        if (!prod) return null
 
-        if (selectedProduct) {
-            setValue(`items.${index}.description`, selectedProduct.name)
-            setValue(`items.${index}.unit`, 'Piece')
-            setValue(`items.${index}.weight`, selectedProduct.default_weight)
-            setValue(`items.${index}.wastage_percent`, selectedProduct.wastage_percent)
-            setValue(`items.${index}.labour_cost`, selectedProduct.labour_cost)
-            setValue(`items.${index}.rate`, selectedProduct.labour_cost)
+        const requested = Number(draftItem.quantity || 0)
+        const available = Number(prod.current_stock)
+
+        if (requested > available) {
+            return { type: 'error', msg: `Insufficient Stock! (Max: ${available})` }
         }
+        if (available <= 5) {
+            return { type: 'warning', msg: `Low Stock! Only ${available} left.` }
+        }
+        return { type: 'success', msg: `Stock Available: ${available}` }
+    }
+
+    const stockStatus = getStockStatus()
+
+    const addToBill = () => {
+        setDraftError('')
+
+        if (materialType === 'CLIENT' && !draftItem.description) return setDraftError('Please select a Job Work Item.')
+        if (materialType === 'OWN' && !draftItem.product_id) return setDraftError('Please select a Product.')
+        if (Number(draftItem.quantity) <= 0) return setDraftError('Quantity must be greater than zero.')
+
+        // Stock Check (OWN only) - double check
+        if (materialType === 'OWN' && draftItem.product_id) {
+            const prod = products.find(p => p.id === draftItem.product_id)
+            if (prod && Number(draftItem.quantity) > prod.current_stock) {
+                return setDraftError(`Insufficient Stock! Available: ${prod.current_stock}`)
+            }
+        }
+
+        // Handle Karigar Assignments
+        if (draftItem.has_karigar) {
+            if (karigarSplits.length > 0) {
+                // MULTI-SPLIT MODE
+                const totalSplit = karigarSplits.reduce((acc, curr) => acc + curr.quantity, 0)
+                if (Math.abs(totalSplit - Number(draftItem.quantity)) > 0.01) {
+                    return setDraftError(`Split quantity (${totalSplit}) does not match Total Quantity (${draftItem.quantity})`)
+                }
+
+                // Add each split as a separate line item
+                karigarSplits.forEach(split => {
+                    const k = karigars.find(kg => kg.id === split.karigar_id)
+                    append({
+                        ...draftItem,
+                        quantity: split.quantity,
+                        karigar_id: split.karigar_id,
+                        karigar_rate: k?.default_rate || 0,
+                        karigar_quantity: split.quantity
+                    })
+                })
+            } else {
+                // SINGLE MODE
+                if (!draftItem.karigar_id) return setDraftError('Please select a Karigar.')
+                append({ ...draftItem })
+            }
+        } else {
+            // NO KARIGAR
+            append({ ...draftItem })
+        }
+
+        const resetBase = materialType === 'CLIENT'
+            ? { description: '', quantity: 0, unit: 'KG', rate: 0 }
+            : { description: '', quantity: 0, unit: 'Piece', rate: 0, product_id: undefined }
+        setDraftItem(resetBase)
+        setKarigarSplits([])
     }
 
     const onSubmit = async (data: FormValues) => {
         try {
             setSubmissionError('')
+            if (data.items.length === 0) throw new Error("The bill is empty! Add items first.")
+            if (!data.customer_name) throw new Error("Customer Name is required.")
 
             if (data.material_type === 'OWN') {
                 for (const item of data.items) {
                     if (item.product_id) {
-                        const product = products.find(p => p.id === item.product_id)
-                        if (product) {
-                            const qty = Number(item.quantity);
-                            const stock = Number(product.current_stock);
-                            console.log(`Checking Stock: ${product.name} | Qty: ${qty} | Stock: ${stock}`);
-
-                            if (qty > stock) {
-                                alert(`Debug: Stock Check Failed!\nProduct: ${product.name}\nRequested: ${qty}\nAvailable: ${stock}`);
-                                throw new Error(`Insufficient stock for "${product.name}". Available: ${stock}`);
-                            }
+                        const p = products.find(prod => prod.id === item.product_id)
+                        if (p && Number(item.quantity) > p.current_stock) {
+                            throw new Error(`Stock changed! Insufficient stock for ${p.name}`)
                         }
                     }
                 }
@@ -174,427 +300,426 @@ export default function OrderCreate() {
                 karigar_quantity: item.has_karigar ? item.karigar_quantity : undefined
             }))
 
-            await createOrder({
+            const gstRateValue = data.material_type === 'CLIENT'
+                ? (gstSettings?.defaultGstRateJobWork ?? 5)
+                : (gstSettings?.defaultGstRateSale ?? 3)
+
+            const result = await createOrder({
                 customer_name: data.customer_name,
                 order_date: data.order_date,
-                material_type: data.material_type
-            }, cleanedItems, data.gst_enabled)
-            navigate('/orders')
+                material_type: data.material_type,
+                status: 'Pending'
+            }, cleanedItems, data.gst_enabled, gstRateValue)
+
+            // SHOW SUCCESS MODAL INSTEAD OF NAVIGATING
+            setSuccessData({
+                open: true,
+                orderId: result.order_id,
+                customer: data.customer_name,
+                total: result.total || 0,
+                // Pass items to success state for sharing
+                items: data.items,
+                date: data.order_date
+            })
+
+            // Clear Form
+            replace([])
+            reset()
+
         } catch (err: any) {
             console.error(err)
-            // Parse common DB errors
-            let msg = err.message || 'Failed to create order'
-            if (msg.includes('Insufficient stock')) {
-                // Try to extract UUID and find Product Name for better message
-                const match = msg.match(/Insufficient stock for product ([0-9a-f-]+)/)
-                if (match && match[1]) {
-                    const product = products.find(p => p.id === match[1])
-                    if (product) {
-                        msg = `Insufficient stock for "${product.name}". Requested qty exceeds available.`
-                    }
-                } else {
-                    msg = "Insufficient stock for one of the selected products."
-                }
+            let msg = err.message
+            if (msg.includes('products_current_stock_check') || msg.includes('check constraint')) {
+                msg = "Insufficient Stock! Current stock level prevents this order."
             }
             setSubmissionError(msg)
         }
     }
 
+
     return (
-        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-            <h1 style={{ marginBottom: '1.5rem' }}>Create New Order</h1>
+        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '1rem', height: 'calc(100vh - 100px)', position: 'relative' }}>
 
-            {/* Error / Loading States */}
-            {loadingItems && <div style={{ marginBottom: '1rem', color: 'var(--color-primary)' }}>Loading catalog...</div>}
+            {/* SUCCESS MODAL OVERLAY */}
+            {successData && successData.open && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(5px)' }}>
+                    <div style={{ background: 'white', padding: '2rem', borderRadius: '24px', width: '450px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', textAlign: 'center', animation: 'scaleIn 0.3s ease' }}>
+                        <div style={{ background: '#dcfce7', width: '80px', height: '80px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto' }}>
+                            <CheckCircle2 size={48} color="#16a34a" strokeWidth={3} />
+                        </div>
+                        <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#111827', margin: '0 0 0.5rem 0' }}>Order Placed!</h2>
+                        <p style={{ color: '#6b7280', fontSize: '1.1rem' }}>Order for <strong>{successData.customer}</strong> saved.</p>
 
-            {fetchError && (
-                <div style={{ background: '#fef2f2', color: '#dc2626', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', border: '1px solid #fecaca' }}>
-                    <strong>Catalog Load Error:</strong> {fetchError}
-                    <br /><small>Please check your internet connection or database setup.</small>
+                        <div style={{ background: '#f3f4f6', padding: '1rem', borderRadius: '12px', marginTop: '1.5rem', marginBottom: '2rem' }}>
+                            <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '0.25rem' }}>Total Amount</div>
+                            <div style={{ fontSize: '2rem', fontWeight: 800, color: '#111827' }}>₹{formatIndianRupees(successData.total)}</div>
+                        </div>
+
+                        {/* Buttons Removed - Simplified View */}
+                        <div style={{ marginTop: '2rem' }}>
+                            <button
+                                onClick={() => {
+                                    setSuccessData(null) // Close
+                                }}
+                                style={{
+                                    background: '#1f2937',
+                                    color: 'white',
+                                    border: 'none',
+                                    padding: '1rem',
+                                    borderRadius: '12px',
+                                    fontSize: '1.1rem',
+                                    fontWeight: 700,
+                                    width: '100%',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.5rem'
+                                }}
+                            >
+                                <CheckCircle2 size={20} /> Close & Start New Order
+                            </button>
+                        </div>
+
+                    </div>
                 </div>
             )}
 
-            {submissionError && (
-                <div style={{ background: '#fee2e2', color: '#dc2626', padding: '1rem', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem' }}>
-                    {submissionError}
-                </div>
-            )}
 
-            {/* Debug Info (visible if lists are empty but no error) */}
-            {!loadingItems && jobWorkItems.length === 0 && products.length === 0 && !fetchError && (
-                <div style={{ background: '#fffbeb', color: '#b45309', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
-                    Warning: No Job Work Items or Products found in the database.
-                </div>
-            )}
-
-            <form onSubmit={handleSubmit(onSubmit)}>
-                {/* Header Grid */}
-                <div style={{
-                    background: 'white',
-                    padding: '1.5rem',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border)',
-                    marginBottom: '1.5rem',
-                    display: 'grid',
-                    gridTemplateColumns: '1fr',
-                    gap: '1rem',
-                }} className="form-grid">
-
-                    <div className="grid-col-span-full">
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Customer Name</label>
-                        <input
-                            {...register('customer_name', { required: 'Customer name is required' })}
-                            style={{ width: '100%', boxSizing: 'border-box' }}
-                            placeholder="Enter customer name"
-                        />
-                        {errors.customer_name && <span style={{ color: 'red', fontSize: '0.875rem' }}>{errors.customer_name.message}</span>}
+            {/* TOP HEADER BAR */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', background: 'white', padding: '1rem 1.5rem', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)', border: '1px solid #e5e7eb' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%)', padding: '0.75rem', borderRadius: '10px', color: 'white' }}>
+                        <ShoppingCart size={24} />
                     </div>
-
                     <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Material Type</label>
-                        <select
-                            {...register('material_type', { required: 'Material type is required' })}
-                            style={{ width: '100%', boxSizing: 'border-box' }}
-                            onChange={(e) => {
-                                // Important: We must clear items when switching modes to prevent JobWork items from having hidden product_ids or vice-versa
-                                register('material_type').onChange(e) // Call original handler
-                                // Reset to a blank item compatible with both
-                                replace([{ description: '', quantity: 0, unit: 'KG', rate: 0, weight: 0, wastage_percent: 0, labour_cost: 0, product_id: undefined }])
-                            }}
-                        >
-
-                            <option value="">Select Type...</option>
-                            <option value="CLIENT">Client Material (Job Work)</option>
-                            <option value="OWN">Own Material (Product Sale)</option>
-                        </select>
-                        {errors.material_type && <span style={{ color: 'red', fontSize: '0.875rem' }}>{errors.material_type.message}</span>}
-                    </div>
-
-                    <div>
-                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Order Date</label>
-                        <input
-                            type="date"
-                            {...register('order_date', { required: 'Date is required' })}
-                            style={{ width: '100%', boxSizing: 'border-box' }}
-                        />
-                    </div>
-
-                    <div>
-                        <label style={{ display: 'block', marginBottom: '1.2rem', fontWeight: 500 }}>GST Bill Required?</label>
-                        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                                <input
-                                    type="radio"
-                                    value="true"
-                                    checked={gstEnabled === true}
-                                    onChange={() => setValue('gst_enabled', true)}
-                                    style={{ width: 'auto' }}
-                                />
-                                YES ({gstRate}%)
-                            </label>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                                <input
-                                    type="radio"
-                                    value="false"
-                                    checked={gstEnabled === false}
-                                    onChange={() => setValue('gst_enabled', false)}
-                                    style={{ width: 'auto' }}
-                                />
-                                NO
-                            </label>
-                        </div>
+                        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#1f2937', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            Create New Order
+                            {silverRate && (
+                                <span style={{ fontSize: '0.8rem', fontWeight: 600, background: '#fef3c7', color: '#92400e', padding: '0.2rem 0.6rem', borderRadius: '6px', border: '1px solid #fde68a' }}>
+                                    Live Rate: ₹{(silverRate.rate_10g * 100).toLocaleString()}/kg
+                                </span>
+                            )}
+                        </h1>
+                        <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem' }}>Full Screen Workbench Mode</p>
                     </div>
                 </div>
 
-                {/* Order Items */}
-                <div style={{ marginBottom: '1.5rem' }}>
-                    <h3 style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        Order Items
-                        <span style={{ fontSize: '0.9em', fontWeight: 400, color: 'var(--color-text-muted)' }}>
-                            Subtotal: ₹{subtotal.toFixed(2)}
-                        </span>
-                    </h3>
-
-                    {/* Contextual Help */}
-                    {materialType === 'CLIENT' && (
-                        <div style={{ fontSize: '0.85rem', color: 'var(--color-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <Info size={16} />
-                            <span>Job Work Mode: Select items from the list.</span>
-                        </div>
-                    )}
-
-                    {materialType === 'OWN' && (
-                        <div style={{ fontSize: '0.85rem', color: '#059669', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <Package size={16} />
-                            <span>Product Mode: Select manufactured products. Stock deducted automatically.</span>
-                        </div>
-                    )}
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        {fields.map((field, index) => (
-                            <div key={field.id} style={{
-                                background: 'white',
-                                padding: '1rem',
-                                borderRadius: 'var(--radius-md)',
-                                border: '1px solid var(--color-border)',
-                                position: 'relative'
-                            }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }} className="item-grid-mobile">
-
-
-                                    {/* ITEM SELECTION LOGIC */}
-                                    <div style={{ gridColumn: '1 / -1' }}>
-                                        <label style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>Item / Description</label>
-
-                                        {materialType === 'CLIENT' ? (
-                                            <select
-                                                {...register(`items.${index}.description` as const, { required: true })}
-                                                onChange={(e) => {
-                                                    register(`items.${index}.description` as const).onChange(e)
-                                                    handleJobWorkSelect(index, e.target.value)
-                                                }}
-                                                style={{ width: '100%', boxSizing: 'border-box' }}
-                                            >
-                                                <option value="">Select Job Work Item...</option>
-                                                {jobWorkItems.map(item => (
-                                                    <option key={item.id} value={item.name}>
-                                                        {item.name} ({item.default_rate}/{item.unit})
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        ) : materialType === 'OWN' ? (
-                                            <select
-                                                {...register(`items.${index}.product_id` as const, { required: true })}
-                                                onChange={(e) => {
-                                                    register(`items.${index}.product_id` as const).onChange(e)
-                                                    handleProductSelect(index, e.target.value)
-                                                }}
-                                                style={{ width: '100%', boxSizing: 'border-box' }}
-                                            >
-                                                <option value="">Select Product...</option>
-                                                {products.length === 0 && <option value="" disabled>Loading products...</option>}
-                                                {products.map(prod => (
-                                                    <option key={prod.id} value={prod.id} disabled={prod.current_stock <= 0}>
-                                                        {prod.name} - {prod.size} (Stock: {prod.current_stock})
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        ) : (
-                                            <input
-                                                {...register(`items.${index}.description` as const, { required: true })}
-                                                style={{ width: '100%', boxSizing: 'border-box' }}
-                                                placeholder="Select Material Type first..."
-                                                disabled={!materialType}
-                                            />
-                                        )}
-                                    </div>
-
-                                    {/* Extra Details for OWN Material */}
-                                    {materialType === 'OWN' && items[index]?.product_id && (
-                                        <div style={{ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', gap: '1rem', fontSize: '0.8rem', color: 'var(--color-text-muted)', background: '#f8fafc', padding: '0.5rem', borderRadius: '4px' }}>
-                                            <span>Weight: <b>{items[index]?.weight}g</b></span>
-                                            <span>Wastage: <b>{items[index]?.wastage_percent}%</b></span>
-                                            <span>Labour: <b>{items[index]?.labour_cost}</b></span>
-                                        </div>
-                                    )}
-
-                                    {/* Qty / Unit / Rate */}
-                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                        <div style={{ flex: 1 }}>
-                                            <label style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>Qty</label>
-                                            <input
-                                                type="number"
-                                                step="any"
-                                                {...register(`items.${index}.quantity` as const, { required: true, min: 0.01 })}
-                                                style={{ width: '100%', boxSizing: 'border-box' }}
-                                            />
-                                        </div>
-                                        <div style={{ width: '80px' }}>
-                                            <label style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>Unit</label>
-                                            <select
-                                                {...register(`items.${index}.unit` as const)}
-                                                style={{ width: '100%', boxSizing: 'border-box' }}
-                                                disabled={materialType === 'OWN'}
-                                            >
-                                                {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                        <div style={{ flex: 1 }}>
-                                            <label style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>Rate</label>
-                                            <input
-                                                type="number"
-                                                step="any"
-                                                {...register(`items.${index}.rate` as const, { required: true, min: 0 })}
-                                                style={{ width: '100%', boxSizing: 'border-box' }}
-                                            />
-                                        </div>
-                                        <div style={{ width: '100px', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', paddingBottom: '0.5rem', fontWeight: 600 }}>
-                                            ₹{((watch(`items.${index}.quantity`) || 0) * (watch(`items.${index}.rate`) || 0)).toFixed(2)}
-                                        </div>
-                                    </div>
-
-                                    {/* Karigar Assignment (Optional) */}
-                                    <div style={{ gridColumn: '1 / -1', paddingTop: '0.5rem', borderTop: '1px dashed #e2e8f0', marginTop: '0.5rem' }}>
-                                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: 'pointer', color: 'var(--color-primary)', fontWeight: 600 }}>
-                                            <input
-                                                type="checkbox"
-                                                {...register(`items.${index}.has_karigar` as const)}
-                                                style={{ width: 'auto' }}
-                                            />
-                                            External Karigar involved?
-                                        </label>
-
-                                        {watch(`items.${index}.has_karigar`) && (
-                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginTop: '0.8rem', background: '#f0f9ff', padding: '1rem', borderRadius: '8px' }}>
-                                                <div>
-                                                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.25rem', fontWeight: 600 }}>Select Karigar</label>
-                                                    <select
-                                                        {...register(`items.${index}.karigar_id` as const, { required: watch(`items.${index}.has_karigar`) })}
-                                                        style={{ width: '100%', boxSizing: 'border-box', padding: '0.4rem' }}
-                                                        onChange={(e) => {
-                                                            const k = karigars.find(kg => kg.id === e.target.value)
-                                                            if (k) {
-                                                                setValue(`items.${index}.karigar_rate`, k.default_rate)
-                                                                setValue(`items.${index}.karigar_quantity`, watch(`items.${index}.quantity`) || 0)
-                                                            }
-                                                        }}
-                                                    >
-                                                        <option value="">Select...</option>
-                                                        {karigars.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.25rem', fontWeight: 600 }}>Karigar Rate</label>
-                                                    <input
-                                                        type="number"
-                                                        {...register(`items.${index}.karigar_rate` as const, { required: watch(`items.${index}.has_karigar`) })}
-                                                        style={{ width: '100%', boxSizing: 'border-box', padding: '0.4rem' }}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.25rem', fontWeight: 600 }}>Karigar Qty</label>
-                                                    <input
-                                                        type="number"
-                                                        {...register(`items.${index}.karigar_quantity` as const, { required: watch(`items.${index}.has_karigar`) })}
-                                                        style={{ width: '100%', boxSizing: 'border-box', padding: '0.4rem' }}
-                                                    />
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {
-                                    fields.length > 1 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => remove(index)}
-                                            style={{
-                                                position: 'absolute',
-                                                top: '0.5rem',
-                                                right: '0.5rem',
-                                                background: '#fee2e2',
-                                                color: '#dc2626',
-                                                padding: '0.25rem',
-                                                borderRadius: '50%',
-                                                width: '30px',
-                                                height: '30px',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center'
-                                            }}
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    )
-                                }
-                            </div>
-                        ))}
-                    </div>
-
+                {/* Material Switcher */}
+                <div style={{ display: 'flex', background: '#f3f4f6', padding: '4px', borderRadius: '12px', border: '1px solid #e5e7eb' }}>
                     <button
                         type="button"
-                        onClick={() => append({ description: '', quantity: 0, unit: 'Piece', rate: 0 })}
+                        onClick={() => { setValue('material_type', 'CLIENT'); remove() }}
                         style={{
-                            marginTop: '1rem',
-                            background: 'transparent',
-                            border: '1px solid var(--color-primary)',
-                            color: 'var(--color-primary)',
-                            width: '100%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.5rem'
+                            padding: '0.6rem 1.25rem', borderRadius: '8px', fontWeight: 600, fontSize: '0.9rem', border: 'none', cursor: 'pointer',
+                            background: materialType === 'CLIENT' ? 'white' : 'transparent',
+                            color: materialType === 'CLIENT' ? 'var(--color-primary)' : '#6b7280',
+                            boxShadow: materialType === 'CLIENT' ? '0 2px 8px rgba(0,0,0,0.1)' : 'none',
+                            display: 'flex', alignItems: 'center', gap: '0.5rem'
                         }}
                     >
-                        <Plus size={18} /> Add Item
+                        <Hammer size={16} /> Client Material (JOB WORK)
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { setValue('material_type', 'OWN'); remove() }}
+                        style={{
+                            padding: '0.6rem 1.25rem', borderRadius: '8px', fontWeight: 600, fontSize: '0.9rem', border: 'none', cursor: 'pointer',
+                            background: materialType === 'OWN' ? 'white' : 'transparent',
+                            color: materialType === 'OWN' ? 'var(--color-success)' : '#6b7280',
+                            boxShadow: materialType === 'OWN' ? '0 2px 8px rgba(0,0,0,0.1)' : 'none',
+                            display: 'flex', alignItems: 'center', gap: '0.5rem'
+                        }}
+                    >
+                        <Package size={16} /> Own Material (SALE)
                     </button>
                 </div>
+            </div>
 
-                {/* Totals Section */}
-                <div style={{
-                    background: 'white',
-                    padding: '1.5rem',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--color-border)',
-                    textAlign: 'right',
-                    marginBottom: '1.5rem',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.5rem'
-                }}>
-                    <div style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-                        Subtotal: ₹{subtotal.toFixed(2)}
-                    </div>
-                    {gstEnabled && (
-                        <div style={{ color: 'var(--color-primary)', fontSize: '0.9rem' }}>
-                            GST ({gstRate}%): ₹{gstAmount.toFixed(2)}
+            {/* MAIN SPLIT LAYOUT */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(400px, 1.2fr) minmax(350px, 0.8fr)', gap: '1.5rem' }}>
+
+                {/* LEFT: WORKBENCH */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+                    {/* Customer Card */}
+                    <div style={{ background: 'white', padding: '1.5rem', borderRadius: '16px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+                        <h3 style={{ margin: '0 0 1rem', fontSize: '1rem', fontWeight: 700, color: '#374151', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <User size={18} /> Customer Details
+                        </h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
+                            <input
+                                {...register('customer_name', { required: true })}
+                                style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: errors.customer_name ? '2px solid #ef4444' : '1px solid #d1d5db', fontSize: '1rem' }}
+                                placeholder="Customer Name (e.g. Rahul)"
+                                autoFocus
+                            />
+                            <input
+                                type="date"
+                                {...register('order_date', { required: true })}
+                                style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '1rem' }}
+                            />
                         </div>
-                    )}
-                    <div style={{ fontSize: '1.5rem', fontWeight: 700, marginTop: '0.5rem', color: 'var(--color-primary)' }}>
-                        Grand Total: ₹{grandTotal.toFixed(2)}
+                    </div>
+
+                    {/* Add Item Card */}
+                    <div style={{ background: 'white', padding: '1.5rem', borderRadius: '16px', border: materialType === 'OWN' ? '2px solid var(--color-success)' : '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', flex: 1 }}>
+                        <div style={{ marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '1px solid #f3f4f6' }}>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: materialType === 'OWN' ? 'var(--color-success)' : '#1f2937' }}>
+                                {materialType === 'OWN' ? 'OWN MATERIAL SALE' : 'CLIENT MATERIAL JOB WORK'}
+                            </h3>
+                            <p style={{ margin: '0.25rem 0 0', color: '#6b7280', fontSize: '0.875rem' }}>
+                                {materialType === 'OWN'
+                                    ? 'Select Stocked Products to Sell. Auto-deducts stock.'
+                                    : 'Select Job Work Service. No stock impact.'}
+                            </p>
+                        </div>
+
+                        {draftError && (
+                            <div style={{ background: '#fef2f2', color: '#dc2626', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.9rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <AlertTriangle size={16} /> {draftError}
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                            {/* SELECTOR */}
+                            <div>
+                                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.5rem', color: '#4b5563' }}>
+                                    {materialType === 'CLIENT' ? 'Select Job Work Service' : 'Select Product (From Stock)'}
+                                </label>
+                                <select
+                                    value={materialType === 'CLIENT' ? draftItem.description : (draftItem.product_id || '')}
+                                    onChange={(e) => handleDraftItemChange(materialType === 'CLIENT' ? 'description' : 'product_id', e.target.value)}
+                                    style={{ width: '100%', padding: '0.875rem', borderRadius: '10px', border: '2px solid #e5e7eb', fontSize: '1rem', background: 'white' }}
+                                >
+                                    <option value="">-- Select Item --</option>
+                                    {materialType === 'CLIENT'
+                                        ? jobWorkItems.map(j => <option key={j.id} value={j.name}>{j.name} (Service) - ₹{j.default_rate}</option>)
+                                        : products.map(p => <option key={p.id} value={p.id} disabled={p.current_stock <= 0}>{p.name} - Stock: {p.current_stock}{p.current_stock <= 0 ? ' (OUT)' : ''}</option>)
+                                    }
+                                </select>
+                            </div>
+
+                            {/* Qty & Rate Grid */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                <div>
+                                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.5rem', color: '#4b5563' }}>Quantity ({draftItem.unit})</label>
+                                    <input
+                                        type="number" step="any"
+                                        value={draftItem.quantity || ''}
+                                        onChange={(e) => handleDraftItemChange('quantity', Number(e.target.value))}
+                                        style={{ width: '100%', padding: '0.875rem', borderRadius: '10px', border: '2px solid #e5e7eb', fontSize: '1.25rem', fontWeight: 700 }}
+                                        placeholder="0"
+                                    />
+                                    {/* LIVE STOCK INDICATOR */}
+                                    {materialType === 'OWN' && stockStatus && (
+                                        <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', fontWeight: 600, color: stockStatus.type === 'error' ? '#dc2626' : stockStatus.type === 'warning' ? '#d97706' : '#059669', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                            {stockStatus.type === 'error' ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} {stockStatus.msg}
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.5rem', color: '#4b5563' }}>Rate (₹)</label>
+                                    <input
+                                        type="number" step="any"
+                                        value={draftItem.rate || ''}
+                                        onChange={(e) => handleDraftItemChange('rate', Number(e.target.value))}
+                                        style={{ width: '100%', padding: '0.875rem', borderRadius: '10px', border: '2px solid #e5e7eb', fontSize: '1.25rem', fontWeight: 700 }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* KARIGAR SELECTION */}
+                            <div style={{ background: '#f9fafb', padding: '1rem', borderRadius: '12px', border: '1px solid #e5e7eb', marginBottom: '1rem' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', fontWeight: 600, color: '#374151', userSelect: 'none', marginBottom: '0.5rem' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={draftItem.has_karigar || false}
+                                        onChange={(e) => handleDraftItemChange('has_karigar', e.target.checked)}
+                                        style={{ width: '18px', height: '18px', accentColor: 'var(--color-primary)' }}
+                                    />
+                                    Assign to Karigar?
+                                </label>
+
+                                {draftItem.has_karigar && (
+                                    <div style={{ animation: 'fadeIn 0.2s' }}>
+                                        {/* SPLIT LIST */}
+                                        {karigarSplits.map((split, idx) => (
+                                            <div key={idx} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                                                <div style={{ flex: 1, fontWeight: 500, background: 'white', padding: '0.5rem', borderRadius: '6px', border: '1px solid #d1d5db' }}>
+                                                    {split.name}
+                                                </div>
+                                                <div style={{ width: '80px', textAlign: 'center', fontWeight: 600 }}>
+                                                    {split.quantity} {draftItem.unit}
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setKarigarSplits(prev => prev.filter((_, i) => i !== idx))}
+                                                    style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '6px', padding: '0.4rem', cursor: 'pointer' }}
+                                                >
+                                                    <X size={16} />
+                                                </button>
+                                            </div>
+                                        ))}
+
+                                        {/* ADDER */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
+                                            <select
+                                                id="split_karigar"
+                                                className="karigar-select"
+                                                style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '0.9rem' }}
+                                            >
+                                                <option value="">-- Karigar --</option>
+                                                {karigars.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
+                                            </select>
+
+                                            <input
+                                                id="split_qty"
+                                                type="number"
+                                                placeholder="Qty"
+                                                defaultValue={Math.max(0, (draftItem.quantity || 0) - karigarSplits.reduce((acc, c) => acc + c.quantity, 0))}
+                                                style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '0.9rem' }}
+                                            />
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const kSelect = document.getElementById('split_karigar') as HTMLSelectElement
+                                                    const qInput = document.getElementById('split_qty') as HTMLInputElement
+                                                    const kId = kSelect.value
+                                                    const qty = Number(qInput.value)
+
+                                                    if (!kId || qty <= 0) return
+
+                                                    const kName = karigars.find(k => k.id === kId)?.name || 'Unknown'
+                                                    setKarigarSplits(prev => [...prev, { karigar_id: kId, name: kName, quantity: qty }])
+
+                                                    // Reset
+                                                    kSelect.value = ""
+                                                    qInput.value = ""
+                                                }}
+                                                style={{ background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', padding: '0.6rem', cursor: 'pointer' }}
+                                            >
+                                                <Plus size={18} />
+                                            </button>
+                                        </div>
+
+                                        <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '4px', textAlign: 'right' }}>
+                                            Assigned: {karigarSplits.reduce((a, c) => a + c.quantity, 0)} / {draftItem.quantity || 0}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* ADD BUTTON */}
+                            <button
+                                type="button"
+                                onClick={addToBill}
+                                disabled={stockStatus?.type === 'error'}
+                                style={{
+                                    background: (stockStatus?.type === 'error') ? '#9ca3af' : 'var(--color-primary)',
+                                    color: 'white', border: 'none', padding: '1rem', borderRadius: '12px',
+                                    fontSize: '1rem', fontWeight: 700, cursor: (stockStatus?.type === 'error') ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                                    marginTop: '0.5rem', boxShadow: '0 4px 15px rgba(0,0,0,0.1)'
+                                }}
+                            >
+                                <Plus size={20} /> Add Item to Bill <ArrowRight size={18} />
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    style={{
-                        width: '100%',
-                        padding: '1rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '0.5rem',
-                        fontSize: '1.1rem'
-                    }}
-                >
-                    <Save size={20} />
-                    {isSubmitting ? 'Saving Order...' : 'Create Order'}
-                </button>
+                {/* RIGHT: BILL PREVIEW */}
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                    <div style={{ background: 'white', borderRadius: '16px', border: '1px solid #e5e7eb', boxShadow: '0 10px 30px rgba(0,0,0,0.08)', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-            </form >
+                        {/* Header */}
+                        <div style={{ background: '#f9fafb', padding: '1.25rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#111827' }}>Current Bill</h2>
+                            <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#6b7280', background: 'white', padding: '0.25rem 0.75rem', borderRadius: '20px', border: '1px solid #e5e7eb' }}>
+                                {fields.length} Items
+                            </div>
+                        </div>
 
-            {/* Style for Form Grid on desktop */}
-            < style > {`
-        @media (min-width: 640px) {
-            .form-grid {
-                grid-template-columns: 1fr 1fr;
-            }
-            .grid-col-span-full {
-                grid-column: 1 / -1;
-            }
-            .item-grid-mobile {
-                display: grid !important;
-                grid-template-columns: 2fr 1fr 1fr auto !important;
-                gap: 1rem !important;
-                align-items: end;
-            }
-        }
-      `}</style >
-        </div >
+                        {/* Items List */}
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
+                            {fields.length === 0 ? (
+                                <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', minHeight: '300px' }}>
+                                    <ShoppingCart size={48} style={{ marginBottom: '1rem', opacity: 0.2 }} />
+                                    <p>Bill is empty.</p>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                    {fields.map((item, index) => (
+                                        <div key={item.id} style={{ background: '#f9fafb', padding: '1rem', borderRadius: '12px', border: '1px solid #f3f4f6', position: 'relative' }}>
+                                            <div style={{ fontWeight: 600, color: '#374151' }}>{item.description}</div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem', color: '#6b7280', fontSize: '0.9rem' }}>
+                                                <span>{item.quantity} {item.unit} x ₹{item.rate}</span>
+                                                <span style={{ fontWeight: 700, color: '#111827' }}>₹{formatIndianRupees(item.quantity * item.rate)}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => remove(index)}
+                                                style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Totals Footer */}
+                        <div style={{ background: '#111827', padding: '1.5rem', color: 'white', marginTop: 'auto' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.9rem' }}>
+                                    <input
+                                        type="checkbox"
+                                        {...register('gst_enabled')}
+                                        style={{ width: '16px', height: '16px' }}
+                                    />
+                                    Apply GST?
+                                </label>
+                                <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '0.9rem', opacity: 0.8 }}>Subtotal: ₹{formatIndianRupees(subtotal)}</div>
+                                    {gstEnabled && <div style={{ fontSize: '0.9rem', color: '#fbbf24' }}>+ GST: ₹{formatIndianRupees(gstAmount)}</div>}
+                                </div>
+                            </div>
+
+                            <div style={{ borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>Grand Total</div>
+                                <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#10b981' }}>₹{formatIndianRupees(grandTotal)}</div>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={handleSubmit(onSubmit)}
+                                disabled={isSubmitting || fields.length === 0}
+                                style={{
+                                    width: '100%', marginTop: '1.25rem', padding: '1rem',
+                                    background: (isSubmitting || fields.length === 0) ? '#374151' : 'var(--color-success)',
+                                    color: (isSubmitting || fields.length === 0) ? '#9ca3af' : 'white',
+                                    border: 'none', borderRadius: '10px',
+                                    fontSize: '1.1rem', fontWeight: 700, cursor: (isSubmitting || fields.length === 0) ? 'not-allowed' : 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem'
+                                }}
+                            >
+                                {isSubmitting ? <Loader2 className="animate-spin" /> : <CheckCircle2 size={22} />}
+                                {isSubmitting ? 'Processing...' : 'Save Order'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            {/* Keyframes */}
+            <style>{`
+                @keyframes scaleIn {
+                    from { transform: scale(0.9); opacity: 0; }
+                    to { transform: scale(1); opacity: 1; }
+                }
+            `}</style>
+        </div>
     )
 }

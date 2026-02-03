@@ -1,31 +1,42 @@
 import { useState } from 'react'
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthProvider'
-import { Menu, X, LayoutDashboard, ShoppingCart, Settings, LogOut, Wallet, BarChart3, BookOpen, Users, Receipt, LineChart, Book, Package } from 'lucide-react'
+import { useSettings } from './SettingsContext'
+import { t } from '../utils/i18n'
+import { Menu, X, LayoutDashboard, ShoppingCart, Settings, LogOut, Wallet, BarChart3, BookOpen, Users, Receipt, LineChart, Book, Package, User, ChevronDown, Truck } from 'lucide-react'
 
 // Simple helper for nav items
+import { getLatestRate, getRateHistory } from '../services/rateService'
+import { getStockSummary, getMetalInventory, getFinishedGoodsWeight } from '../services/inventoryService'
+import { getOrders } from '../services/orderService'
+import { getSettings } from '../services/settingsService'
+
 const navItems = [
-    { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-    { name: 'Orders', path: '/orders', icon: ShoppingCart },
-    { name: 'Expenses', path: '/expenses', icon: Wallet },
-    { name: 'Accounting (P&L)', path: '/accounting', icon: BarChart3 },
-    { name: 'Customer Ledger', path: '/ledger', icon: BookOpen },
-    { name: 'Karigar Master', path: '/karigar', icon: Users },
-    { name: 'Karigar Settlement', path: '/settlement', icon: Wallet },
-    { name: 'GST Module', path: '/gst-reports', icon: Receipt },
-    { name: 'Silver Rates', path: '/rates', icon: LineChart },
-    { name: 'Business Catalog', path: '/catalog', icon: Book },
-    { name: 'Stock Management', path: '/stock', icon: Package },
-    { name: 'Settings', path: '/settings', icon: Settings },
+    { name: 'Dashboard', key: 'dashboard', path: '/', icon: LayoutDashboard, prefetch: () => Promise.all([getLatestRate(), getMetalInventory(), getFinishedGoodsWeight(), getOrders()]) },
+    { name: 'Orders', key: 'orders', path: '/orders', icon: ShoppingCart, prefetch: () => getOrders() },
+    { name: 'Expenses', key: 'expenses', path: '/expenses', icon: Wallet },
+    { name: 'Accounting', key: 'accounting', path: '/accounting', icon: BarChart3 },
+    { name: 'Customer Ledger', key: 'ledger', path: '/ledger', icon: BookOpen },
+    { name: 'Vendor Master', key: 'vendors', path: '/vendors', icon: Truck },
+    { name: 'Karigar Master', key: 'karigar', path: '/karigar', icon: Users },
+    { name: 'Karigar Settlement', key: 'settlement', path: '/settlement', icon: Wallet },
+    { name: 'GST Module', key: 'gst_module', path: '/gst-reports', icon: Receipt },
+    { name: 'Silver Rates', key: 'silver_rates', path: '/rates', icon: LineChart, prefetch: () => getRateHistory() },
+    { name: 'Business Catalog', key: 'catalog', path: '/catalog', icon: Book },
+    { name: 'Stock Management', key: 'stock', path: '/stock', icon: Package, prefetch: () => getStockSummary(0) },
+    { name: 'Settings', key: 'settings', path: '/settings', icon: Settings, prefetch: () => getSettings('business_profile') },
 ]
 
 export default function Layout() {
     const { signOut, user } = useAuth()
+    const { settings } = useSettings()
     const [sidebarOpen, setSidebarOpen] = useState(false)
+    const [profileDropdownOpen, setProfileDropdownOpen] = useState(false)
     const location = useLocation()
 
     const toggleSidebar = () => setSidebarOpen(!sidebarOpen)
     const closeSidebar = () => setSidebarOpen(false)
+    const toggleProfileDropdown = () => setProfileDropdownOpen(!profileDropdownOpen)
 
     return (
         <div style={{ display: 'flex', minHeight: '100vh' }}>
@@ -39,7 +50,7 @@ export default function Layout() {
 
             {/* Sidebar */}
             <aside style={{
-                width: '250px',
+                width: '220px',
                 background: 'var(--color-surface)', // Sidebar color
                 borderRight: '1px solid var(--color-border)',
                 display: 'flex',
@@ -55,15 +66,17 @@ export default function Layout() {
                 {/* Note: I will add media query class logic via style tag or css file later, 
          but for now using inline style for transform which needs JS state */}
 
-                <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h2 style={{ margin: 0, color: 'var(--color-primary)' }}>ERP Core</h2>
-                    <button onClick={closeSidebar} style={{ background: 'transparent', padding: 0, color: 'var(--color-text)', display: 'block' }} className="mobile-only-close">
-                        <X size={24} />
+                <div style={{ padding: '0.5rem', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', minHeight: '90px' }}>
+                    <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', height: '80px' }}>
+                        <img src="/logo.png" alt="Nexora Digital" style={{ height: '140px', width: 'auto', objectFit: 'contain', transform: 'scale(1.5)', marginTop: '5px' }} />
+                    </div>
+                    <button onClick={closeSidebar} style={{ background: 'transparent', padding: '0.25rem', color: 'var(--color-text)', display: 'block', marginLeft: 'auto' }} className="mobile-only-close">
+                        <X size={20} />
                     </button>
                 </div>
 
-                <nav style={{ flex: 1, padding: '1rem' }}>
-                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <nav style={{ flex: 1, padding: '1rem', overflowY: 'auto' }}>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         {navItems.map((item) => {
                             const Icon = item.icon
                             const isActive = location.pathname === item.path
@@ -79,40 +92,38 @@ export default function Layout() {
                                             padding: '0.75rem 1rem',
                                             borderRadius: 'var(--radius-md)',
                                             textDecoration: 'none',
-                                            color: isActive ? 'var(--color-primary)' : 'var(--color-text)',
-                                            background: isActive ? '#eff6ff' : 'transparent',
-                                            fontWeight: isActive ? 600 : 400,
+                                            color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                                            background: isActive ? 'var(--color-primary-pale)' : 'transparent',
+                                            fontWeight: isActive ? 600 : 500,
+                                            fontSize: 'var(--text-sm)',
+                                            transition: 'all var(--transition-base)',
+                                            border: isActive ? '1px solid var(--color-primary-light)' : '1px solid transparent',
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            if (!isActive) {
+                                                e.currentTarget.style.background = 'var(--color-bg)'
+                                                e.currentTarget.style.color = 'var(--color-text-primary)'
+                                            }
+                                            // Prefetch data in background
+                                            if (item.prefetch) {
+                                                item.prefetch().catch(err => console.warn('Prefetch failed:', err))
+                                            }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            if (!isActive) {
+                                                e.currentTarget.style.background = 'transparent'
+                                                e.currentTarget.style.color = 'var(--color-text-secondary)'
+                                            }
                                         }}
                                     >
                                         <Icon size={20} />
-                                        {item.name}
+                                        {t(item.key as any, settings.language as any)}
                                     </Link>
                                 </li>
                             )
                         })}
                     </ul>
                 </nav>
-
-                <div style={{ padding: '1rem', borderTop: '1px solid var(--color-border)' }}>
-                    <div style={{ marginBottom: '1rem', padding: '0 1rem', fontSize: '0.875rem', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {user?.email}
-                    </div>
-                    <button
-                        onClick={signOut}
-                        style={{
-                            width: '100%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '0.5rem',
-                            background: '#fee2e2',
-                            color: '#dc2626'
-                        }}
-                    >
-                        <LogOut size={18} />
-                        Logout
-                    </button>
-                </div>
             </aside>
 
             {/* Main Content */}
@@ -135,9 +146,100 @@ export default function Layout() {
                     >
                         <Menu size={24} />
                     </button>
-                    <h3 style={{ margin: 0 }}>
-                        {navItems.find(i => i.path === location.pathname)?.name || 'Dashboard'}
-                    </h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minHeight: '64px' }}>
+                        <div style={{ height: '50px', width: '80px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="mobile-header-logo">
+                            <img src="/logo.png" alt="Nexora Digital" style={{ height: '80px', width: 'auto', objectFit: 'contain', transform: 'scale(1.4)' }} />
+                        </div>
+                        <h3 style={{ margin: 0 }}>
+                            {t(navItems.find(i => i.path === location.pathname)?.key as any || 'dashboard', settings.language as any)}
+                        </h3>
+                    </div>
+
+                    {/* Profile Dropdown */}
+                    <div style={{ position: 'relative' }}>
+                        <button
+                            onClick={toggleProfileDropdown}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                padding: '0.5rem 1rem',
+                                background: 'var(--color-surface)',
+                                border: '1.5px solid var(--color-border)',
+                                borderRadius: 'var(--radius-md)',
+                                cursor: 'pointer',
+                                color: 'var(--color-text-primary)',
+                                fontWeight: 500,
+                                fontSize: 'var(--text-sm)',
+                                transition: 'all var(--transition-base)',
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.borderColor = 'var(--color-primary)'
+                                e.currentTarget.style.boxShadow = 'var(--shadow-green)'
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.borderColor = 'var(--color-border)'
+                                e.currentTarget.style.boxShadow = 'none'
+                            }}
+                        >
+                            <User size={20} />
+                            <span style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {user?.email?.split('@')[0] || 'Profile'}
+                            </span>
+                            <ChevronDown size={16} style={{ transform: profileDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform var(--transition-base)' }} />
+                        </button>
+
+                        {profileDropdownOpen && (
+                            <div style={{
+                                position: 'absolute',
+                                top: '110%',
+                                right: 0,
+                                background: 'var(--color-surface)',
+                                borderRadius: 'var(--radius-lg)',
+                                boxShadow: 'var(--shadow-lg)',
+                                border: '1px solid var(--color-border)',
+                                zIndex: 100,
+                                minWidth: '240px',
+                                overflow: 'hidden',
+                                padding: '0.5rem'
+                            }}>
+                                <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border-light)' }}>
+                                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>Signed in as</div>
+                                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {user?.email}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={signOut}
+                                    style={{
+                                        width: '100%',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.75rem',
+                                        padding: '0.75rem 1rem',
+                                        background: 'transparent',
+                                        border: 'none',
+                                        borderRadius: 'var(--radius-md)',
+                                        cursor: 'pointer',
+                                        color: 'var(--color-error)',
+                                        fontWeight: 500,
+                                        fontSize: 'var(--text-sm)',
+                                        textAlign: 'left',
+                                        transition: 'all var(--transition-base)',
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = 'var(--color-error-light)'
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = 'transparent'
+                                    }}
+                                >
+                                    <LogOut size={18} />
+                                    {t('sign_out', settings.language as any)}
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </header>
 
                 <div style={{ padding: '1.5rem', flex: 1, overflowY: 'auto' }}>
@@ -155,7 +257,8 @@ export default function Layout() {
            }
            .mobile-only-close { display: none !important; }
            .mobile-menu-trigger { display: none !important; }
-           .main-content { margin-left: 250px !important; }
+           .main-content { margin-left: 220px !important; }
+           .mobile-header-logo { display: none !important; }
         }
         
         /* Mobile: Sidebar hidden by default (handled by JS state transform) */

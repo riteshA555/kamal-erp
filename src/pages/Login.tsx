@@ -72,13 +72,13 @@ export default function Login() {
 
                 {message && (
                     <div style={{
-                        color: msgType === 'error' ? '#dc2626' : '#15803d',
+                        color: msgType === 'error' ? 'var(--color-error)' : 'var(--color-success)',
                         marginBottom: '1rem',
                         textAlign: 'center',
-                        background: msgType === 'error' ? '#fee2e2' : '#dcfce7',
+                        background: msgType === 'error' ? 'var(--color-error-light)' : 'var(--color-success-light)',
                         padding: '0.75rem',
                         borderRadius: 'var(--radius-md)',
-                        fontSize: '0.9rem'
+                        fontSize: 'var(--text-sm)'
                     }}>
                         {message}
                     </div>

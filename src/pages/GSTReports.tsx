@@ -1,47 +1,49 @@
 import { useState, useEffect } from 'react'
 import { getGSTOrders, getITCExpenses, calculateGSTSummary, GSTSummaryItem } from '../services/gstService'
+import { getSettings } from '../services/settingsService'
 import { Order } from '../types'
 import { Expense } from '../services/expenseService'
+import { BusinessProfileSettings, GSTSettings } from '../types/settings'
 import { Download, FileText, CheckCircle2, AlertCircle, TrendingUp, TrendingDown, Wallet, ArrowUpRight, ArrowDownLeft } from 'lucide-react'
 
 export default function GSTReports() {
     const [orders, setOrders] = useState<Order[]>([])
     const [expenses, setExpenses] = useState<Expense[]>([])
+    const [businessProfile, setBusinessProfile] = useState<BusinessProfileSettings | null>(null)
+    const [gstSettings, setGstSettings] = useState<GSTSettings | null>(null)
     const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
     const [loading, setLoading] = useState(true)
     const [activeTab, setActiveTab] = useState<'OUTPUT' | 'INPUT'>('OUTPUT')
     const [activeMenu, setActiveMenu] = useState<'GSTR1' | 'GSTR3B' | null>(null)
 
-    // Business Details (Change these as per actual data)
-    const BUSINESS_INFO = {
-        name: 'KUNAL KISHORE PURIA',
-        gstin: '08XXXXX0000X1Z5',
-        address: 'Main Bazaar, Agra, UP - 282001',
-        phone: '+91 9119106093',
-        email: 'kunalpuria@example.com',
-        pan: 'ABCDE1234F'
-    }
-
-    const OPENING_ITC = 18500
-
-    useEffect(() => {
-        loadData()
-    }, [month])
-
     const loadData = async () => {
         setLoading(true)
         try {
-            const [outData, inData] = await Promise.all([
+            const [outData, inData, bizData, gData] = await Promise.all([
                 getGSTOrders(month),
-                getITCExpenses(month)
+                getITCExpenses(month),
+                getSettings<BusinessProfileSettings>('business_profile'),
+                getSettings<GSTSettings>('gst_settings')
             ])
             setOrders(outData)
             setExpenses(inData)
+            setBusinessProfile(bizData)
+            setGstSettings(gData)
         } catch (err: any) {
             console.error(err)
         } finally {
             setLoading(false)
         }
+    }
+
+    const OPENING_ITC = gstSettings?.itcOpeningBalance || 0
+    const BUSINESS_INFO = {
+        name: businessProfile?.businessName || 'KUNAL KISHORE PURIA',
+        gstin: businessProfile?.gstin || 'GSTIN_NOT_SET',
+        address: businessProfile?.address || '',
+        phone: businessProfile?.phone || '',
+        email: businessProfile?.email || '',
+        pan: businessProfile?.pan || ''
     }
 
     // Calculations
@@ -124,8 +126,6 @@ export default function GSTReports() {
         window.print() // The CSS will handle showing the correct print view
     }
 
-    if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading GST Module...</div>
-
     return (
         <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '4rem' }}>
             {/* Header */}
@@ -141,7 +141,7 @@ export default function GSTReports() {
                     <div style={{ position: 'relative' }}>
                         <button
                             onClick={() => setActiveMenu(activeMenu === 'GSTR1' ? null : 'GSTR1')}
-                            style={{ ...secondaryBtnStyle, background: 'white', color: '#1e293b' }}
+                            style={{ ...secondaryBtnStyle, background: 'white', color: 'var(--color-text-primary)' }}
                         >
                             <FileText size={16} /> GSTR-1 Options
                         </button>
@@ -158,7 +158,7 @@ export default function GSTReports() {
                     <div style={{ position: 'relative' }}>
                         <button
                             onClick={() => setActiveMenu(activeMenu === 'GSTR3B' ? null : 'GSTR3B')}
-                            style={{ ...secondaryBtnStyle, background: '#1e293b', color: 'white' }}
+                            style={{ ...secondaryBtnStyle, background: 'var(--color-primary)', color: 'white' }}
                         >
                             <Download size={16} /> GSTR-3B Options
                         </button>
@@ -177,7 +177,7 @@ export default function GSTReports() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem', marginBottom: '2.5rem' }}>
                 <div style={cardStyle}>
                     <div style={cardHeaderStyle}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-success)' }}>
                             <ArrowUpRight size={18} /> Output GST (Collected)
                         </div>
                     </div>
@@ -187,7 +187,7 @@ export default function GSTReports() {
 
                 <div style={cardStyle}>
                     <div style={cardHeaderStyle}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f59e0b' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-warning)' }}>
                             <ArrowDownLeft size={18} /> Input GST (ITC)
                         </div>
                     </div>
@@ -195,7 +195,7 @@ export default function GSTReports() {
                     <div style={cardSubStyle}>From purchases & expenses</div>
                 </div>
 
-                <div style={{ ...cardStyle, borderLeft: '4px solid #10b981' }}>
+                <div style={{ ...cardStyle, borderLeft: '4px solid var(--color-success)' }}>
                     <div style={cardHeaderStyle}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#1e293b' }}>
                             <Wallet size={18} /> Net GST Credit
@@ -252,7 +252,7 @@ export default function GSTReports() {
                         <div style={{
                             width: `${Math.min(100, (outputTotal / (OPENING_ITC + inputTotal) * 100))}%`,
                             height: '100%',
-                            background: '#1e293b',
+                            background: 'var(--color-primary)',
                             borderRadius: '4px'
                         }}></div>
                     </div>
@@ -265,13 +265,13 @@ export default function GSTReports() {
                     <div style={{ display: 'flex' }}>
                         <button
                             onClick={() => setActiveTab('OUTPUT')}
-                            style={{ ...tabBtnStyle, color: activeTab === 'OUTPUT' ? '#1e293b' : '#94a3b8', borderBottom: activeTab === 'OUTPUT' ? '3px solid #1e293b' : '3px solid transparent' }}
+                            style={{ ...tabBtnStyle, color: activeTab === 'OUTPUT' ? 'var(--color-text-primary)' : 'var(--color-text-muted)', borderBottom: activeTab === 'OUTPUT' ? '3px solid var(--color-primary)' : '3px solid transparent' }}
                         >
                             <ArrowUpRight size={18} /> Output GST
                         </button>
                         <button
                             onClick={() => setActiveTab('INPUT')}
-                            style={{ ...tabBtnStyle, color: activeTab === 'INPUT' ? '#1e293b' : '#94a3b8', borderBottom: activeTab === 'INPUT' ? '3px solid #1e293b' : '3px solid transparent' }}
+                            style={{ ...tabBtnStyle, color: activeTab === 'INPUT' ? 'var(--color-text-primary)' : 'var(--color-text-muted)', borderBottom: activeTab === 'INPUT' ? '3px solid var(--color-primary)' : '3px solid transparent' }}
                         >
                             <ArrowDownLeft size={18} /> Input GST (ITC)
                         </button>
@@ -317,7 +317,7 @@ export default function GSTReports() {
                                             <td style={tdStyle}><Badge text={o.material_type === 'CLIENT' ? 'Job Work' : 'Sale'} color={o.material_type === 'CLIENT' ? '#475569' : '#b45309'} bg={o.material_type === 'CLIENT' ? '#f1f5f9' : '#fffbeb'} /></td>
                                             <td style={{ ...tdStyle, textAlign: 'right' }}>₹{o.subtotal.toLocaleString()}</td>
                                             <td style={{ ...tdStyle, textAlign: 'center' }}>{o.gst_rate}%</td>
-                                            <td style={{ ...tdStyle, textAlign: 'right', color: '#10b981', fontWeight: 700 }}>₹{o.gst_amount.toLocaleString()}</td>
+                                            <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-success)', fontWeight: 700 }}>₹{o.gst_amount.toLocaleString()}</td>
                                         </tr>
                                     ))
                                 ) : (
@@ -329,7 +329,7 @@ export default function GSTReports() {
                                             <td style={tdStyle}><Badge text="Expense" color="#1e293b" bg="#f1f5f9" /></td>
                                             <td style={{ ...tdStyle, textAlign: 'right' }}>₹{Number(e.amount).toLocaleString()}</td>
                                             <td style={{ ...tdStyle, textAlign: 'center' }}>{e.gst_rate}%</td>
-                                            <td style={{ ...tdStyle, textAlign: 'right', color: '#f59e0b', fontWeight: 700 }}>₹{Number(e.gst_amount || 0).toLocaleString()}</td>
+                                            <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--color-warning)', fontWeight: 700 }}>₹{Number(e.gst_amount || 0).toLocaleString()}</td>
                                         </tr>
                                     ))
                                 )}

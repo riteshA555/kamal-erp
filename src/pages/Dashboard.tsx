@@ -1,43 +1,72 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { getLatestRate, SilverRate } from '../services/rateService'
 import { getMetalInventory, getFinishedGoodsWeight, MetalInventory } from '../services/inventoryService'
 import { getOrders } from '../services/orderService'
 import { Scale, TrendingUp, Wrench, ShoppingCart, FileText, Package, Plus, Receipt, Calculator, Eye, ChevronRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useSettings } from '../components/SettingsContext'
+import { t } from '../utils/i18n'
 import { Order } from '../types'
+import { supabase } from '../supabaseClient'
 
 export default function Dashboard() {
+    const { settings } = useSettings()
     const [rate, setRate] = useState<SilverRate | null>(null)
     const [inventory, setInventory] = useState<MetalInventory[]>([])
     const [finishedWeight, setFinishedWeight] = useState(0)
     const [orders, setOrders] = useState<Order[]>([])
+    const [recentRates, setRecentRates] = useState<SilverRate[]>([])
     const [loading, setLoading] = useState(true)
+
+    // SWR Helper Functions
+    const getRateHistory = async () => {
+        const { data, error } = await supabase.from('silver_rates').select('*').order('rate_date', { ascending: true })
+        if (error) throw error
+        return data as SilverRate[]
+    }
 
     useEffect(() => {
         loadData()
     }, [])
 
-    const loadData = async () => {
-        setLoading(true)
+    const loadData = useCallback(async () => {
+        // Background refresh always keeps data fresh
         try {
-            const [r, inv, fw, ords] = await Promise.all([
+            const [r, inv, fw, ords, hist] = await Promise.all([
                 getLatestRate(),
                 getMetalInventory(),
                 getFinishedGoodsWeight(),
-                getOrders()
+                getOrders(),
+                getRateHistory()
             ])
             setRate(r)
             setInventory(inv)
             setFinishedWeight(fw)
             setOrders(ords)
+            setRecentRates(hist)
         } catch (err) {
-            console.error(err)
+            console.error('Dashboard load error:', err)
         } finally {
             setLoading(false)
         }
+    }, [])
+
+    useEffect(() => {
+        // Initial load
+        loadData()
+    }, [loadData])
+
+    const calculateChange = (current: number, previous: number) => {
+        if (!previous || previous === 0) return 0
+        return ((current - previous) / previous) * 100
     }
 
-    if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading Business Overview...</div>
+    const prevRate = recentRates.length > 1 ? recentRates[recentRates.length - 2].rate_10g : (rate?.rate_10g || 0)
+    const rateChangePercent = rate ? calculateChange(rate.rate_10g, prevRate) : 0
+    const rateChangeAmt = rate ? (rate.rate_10g - prevRate) * 100 : 0
+
+
+    // Don't block rendering - show data immediately
 
     // Calculations
     const currentMonth = new Date().getMonth()
@@ -64,9 +93,9 @@ export default function Dashboard() {
     // Helper for Status Badge
     const StatusBadge = ({ status }: { status: string }) => {
         const colors: any = {
-            'Completed': { bg: '#f0fdf4', text: '#16a34a', border: '#bbf7d0' },
-            'Pending': { bg: '#fff7ed', text: '#ea580c', border: '#ffedd5' },
-            'In Progress': { bg: '#fefce8', text: '#854d0e', border: '#fef08a' }
+            'Completed': { bg: 'var(--color-success-light)', text: 'var(--color-success)', border: 'var(--color-success)' },
+            'Pending': { bg: 'var(--color-warning-light)', text: 'var(--color-warning)', border: 'var(--color-warning)' },
+            'In Progress': { bg: 'var(--color-warning-light)', text: 'var(--color-warning)', border: 'var(--color-warning)' }
         }
         const style = colors[status] || colors['Pending']
         return (
@@ -92,8 +121,8 @@ export default function Dashboard() {
                 borderRadius: '6px',
                 fontSize: '0.7rem',
                 fontWeight: 700,
-                backgroundColor: isJobWork ? '#f1f5f9' : '#fffbeb',
-                color: isJobWork ? '#475569' : '#b45309',
+                backgroundColor: isJobWork ? 'var(--color-bg)' : 'var(--color-warning-light)',
+                color: isJobWork ? 'var(--color-text-secondary)' : 'var(--color-warning)',
                 textTransform: 'uppercase'
             }}>
                 {isJobWork ? 'Job Work' : 'Sale'}
@@ -105,8 +134,8 @@ export default function Dashboard() {
         <div style={{ maxWidth: '1400px', margin: '0 auto', paddingBottom: '3rem' }}>
             {/* Header */}
             <header style={{ marginBottom: '2rem' }}>
-                <h1 style={{ margin: 0, fontSize: '1.8rem', fontWeight: 800, color: '#1e293b' }}>Dashboard</h1>
-                <p style={{ margin: '0.2rem 0 0', color: '#64748b', fontSize: '1rem' }}>
+                <h1 style={{ margin: 0, fontSize: 'var(--text-4xl)', fontWeight: 'var(--font-bold)', color: 'var(--color-text-primary)' }}>Dashboard</h1>
+                <p style={{ margin: '0.5rem 0 0', color: 'var(--color-text-secondary)', fontSize: 'var(--text-base)' }}>
                     Welcome back! Here's your business overview. / व्यापार की स्थिति
                 </p>
             </header>
@@ -119,89 +148,96 @@ export default function Dashboard() {
                 marginBottom: '2.5rem'
             }}>
                 {/* 1. Total Silver Stock */}
-                <div style={cardStyle}>
+                <CardSkeleton loading={loading}>
                     <div style={cardHeaderStyle}>
-                        <span>Total Silver Stock<br /><small style={{ color: '#94a3b8' }}>कुल चांदी स्टॉक</small></span>
-                        <div style={{ ...iconBoxStyle, background: '#fffbeb' }}><Scale size={20} color="#f59e0b" /></div>
+                        <span>Total Silver Stock<br /><small style={{ color: 'var(--color-text-muted)' }}>कुल चांदी स्टॉक</small></span>
+                        <div style={{ ...iconBoxStyle, background: 'var(--color-warning-light)' }}><Scale size={20} color="var(--color-warning)" /></div>
                     </div>
                     <div style={cardValueStyle}>{totalSilverStockKg.toFixed(1)} kg</div>
-                    <div style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 600 }}>+2.3 kg this month</div>
-                </div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-success)', fontWeight: 'var(--font-semibold)' }}>+2.3 kg this month</div>
+                </CardSkeleton>
 
                 {/* 2. Today's Rate */}
-                <div style={cardStyle}>
+                <CardSkeleton loading={loading}>
                     <div style={cardHeaderStyle}>
-                        <span>Today's Rate<br /><small style={{ color: '#94a3b8' }}>आज का भाव</small></span>
-                        <div style={{ ...iconBoxStyle, background: '#fefce8' }}><TrendingUp size={20} color="#ca8a04" /></div>
+                        <span>Today's Rate<br /><small style={{ color: 'var(--color-text-muted)' }}>आज का भाव</small></span>
+                        <div style={{ ...iconBoxStyle, background: 'var(--color-warning-light)' }}><TrendingUp size={20} color="var(--color-warning)" /></div>
                     </div>
                     <div style={cardValueStyle}>₹{(rate?.rate_10g ? rate.rate_10g * 100 : 0).toLocaleString()}/kg</div>
-                    <div style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 600 }}>+₹1,150 (+1.2%)</div>
-                </div>
+                    <div style={{
+                        fontSize: 'var(--text-xs)',
+                        color: rateChangePercent >= 0 ? 'var(--color-success)' : '#ef4444',
+                        fontWeight: 'var(--font-semibold)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                    }}>
+                        {rateChangePercent >= 0 ? '▲' : '▼'}
+                        ₹{Math.abs(rateChangeAmt).toLocaleString()} ({Math.abs(rateChangePercent).toFixed(1)}%)
+                    </div>
+                </CardSkeleton>
 
                 {/* 3. Pending Job Work */}
-                <div style={cardStyle}>
+                <CardSkeleton loading={loading}>
                     <div style={cardHeaderStyle}>
-                        <span>Pending Job Work<br /><small style={{ color: '#94a3b8' }}>पेंडिंग जॉब वर्क</small></span>
-                        <div style={{ ...iconBoxStyle, background: '#f8fafc' }}><Wrench size={20} color="#64748b" /></div>
+                        <span>Pending Job Work<br /><small style={{ color: 'var(--color-text-muted)' }}>पेंडिंग जॉब वर्क</small></span>
+                        <div style={{ ...iconBoxStyle, background: 'var(--color-bg)' }}><Wrench size={20} color="var(--color-text-secondary)" /></div>
                     </div>
                     <div style={cardValueStyle}>{pendingOrders.length} Orders</div>
-                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Worth ₹{pendingValue.toLocaleString()}</div>
-                </div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', fontWeight: 'var(--font-medium)' }}>Worth ₹{pendingValue.toLocaleString()}</div>
+                </CardSkeleton>
 
                 {/* 4. Monthly Sales */}
-                <div style={cardStyle}>
+                <CardSkeleton loading={loading}>
                     <div style={cardHeaderStyle}>
-                        <span>Monthly Sales<br /><small style={{ color: '#94a3b8' }}>मासिक बिक्री</small></span>
-                        <div style={{ ...iconBoxStyle, background: '#fffbeb' }}><ShoppingCart size={20} color="#d97706" /></div>
+                        <span>Monthly Sales<br /><small style={{ color: 'var(--color-text-muted)' }}>मासिक बिक्री</small></span>
+                        <div style={{ ...iconBoxStyle, background: 'var(--color-warning-light)' }}><ShoppingCart size={20} color="var(--color-warning)" /></div>
                     </div>
                     <div style={cardValueStyle}>₹{monthlySales.toLocaleString()}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 600 }}>+18% from last month</div>
-                </div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-success)', fontWeight: 'var(--font-semibold)' }}>+18% from last month</div>
+                </CardSkeleton>
 
                 {/* 5. GST Payable */}
-                <div style={cardStyle}>
+                <CardSkeleton loading={loading}>
                     <div style={cardHeaderStyle}>
-                        <span>GST Payable<br /><small style={{ color: '#94a3b8' }}>GST देय</small></span>
-                        <div style={{ ...iconBoxStyle, background: '#fefce8' }}><FileText size={20} color="#b45309" /></div>
+                        <span>GST Payable<br /><small style={{ color: 'var(--color-text-muted)' }}>GST देय</small></span>
+                        <div style={{ ...iconBoxStyle, background: 'var(--color-warning-light)' }}><FileText size={20} color="var(--color-warning)" /></div>
                     </div>
                     <div style={cardValueStyle}>₹{gstPayable.toLocaleString()}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>Due by 20th {new Date().toLocaleString('default', { month: 'short' })}</div>
-                </div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', fontWeight: 'var(--font-medium)' }}>Due by 20th {new Date().toLocaleString('default', { month: 'short' })}</div>
+                </CardSkeleton>
 
                 {/* 6. Products Made */}
-                <div style={cardStyle}>
+                <CardSkeleton loading={loading}>
                     <div style={cardHeaderStyle}>
-                        <span>Products Made<br /><small style={{ color: '#94a3b8' }}>उत्पादन</small></span>
-                        <div style={{ ...iconBoxStyle, background: '#fff7ed' }}><Package size={20} color="#ea580c" /></div>
+                        <span>Products Made<br /><small style={{ color: 'var(--color-text-muted)' }}>उत्पादन</small></span>
+                        <div style={{ ...iconBoxStyle, background: 'var(--color-warning-light)' }}><Package size={20} color="var(--color-warning)" /></div>
                     </div>
                     <div style={cardValueStyle}>{productsMadeCount} pcs</div>
-                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>This month</div>
-                </div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-secondary)', fontWeight: 'var(--font-medium)' }}>This month</div>
+                </CardSkeleton>
             </div>
 
             {/* Main Content Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '2rem' }}>
 
                 {/* Left: Recent Orders */}
-                <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', overflow: 'hidden' }}>
-                    <div style={{ padding: '1.5rem', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                            <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700 }}>Recent Orders</h2>
-                            <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.85rem' }}>हाल के ऑर्डर</p>
-                        </div>
-                        <Link to="/orders" style={{ color: '#f59e0b', textDecoration: 'none', fontWeight: 600, fontSize: '0.9rem' }}>View All</Link>
+                <div style={{ background: 'var(--color-surface)', borderRadius: '16px', border: '1px solid var(--color-border)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
+                    <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{t('recent_orders', settings.language as any)}</h3>
+                        <Link to="/orders" style={{ fontSize: '0.85rem', color: 'var(--color-primary)', textDecoration: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {t('view_all', settings.language as any)} <ChevronRight size={14} />
+                        </Link>
                     </div>
                     <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead>
-                                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
-                                    <th style={thStyle}>Order ID</th>
-                                    <th style={thStyle}>Customer</th>
-                                    <th style={thStyle}>Product</th>
-                                    <th style={thStyle}>Pieces</th>
-                                    <th style={thStyle}>Type</th>
-                                    <th style={thStyle}>Status</th>
-                                    <th style={{ ...thStyle, textAlign: 'right' }}>Amount</th>
+                                <tr style={{ background: 'var(--color-bg)', borderBottom: '1px solid var(--color-border)' }}>
+                                    <th style={{ padding: '12px 24px', textAlign: 'left', fontSize: '12px', color: 'var(--color-text-secondary)', fontWeight: 600 }}>{t('order_id', settings.language as any)}</th>
+                                    <th style={{ padding: '12px 24px', textAlign: 'left', fontSize: '12px', color: 'var(--color-text-secondary)', fontWeight: 600 }}>{t('customer', settings.language as any)}</th>
+                                    <th style={{ padding: '12px 24px', textAlign: 'left', fontSize: '12px', color: 'var(--color-text-secondary)', fontWeight: 600 }}>{t('type', settings.language as any)}</th>
+                                    <th style={{ padding: '12px 24px', textAlign: 'left', fontSize: '12px', color: 'var(--color-text-secondary)', fontWeight: 600 }}>{t('status', settings.language as any)}</th>
+                                    <th style={{ padding: '12px 24px', textAlign: 'right', fontSize: '12px', color: 'var(--color-text-secondary)', fontWeight: 600 }}>{t('amount', settings.language as any)}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -235,7 +271,7 @@ export default function Dashboard() {
                         </h3>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                             <Link to="/orders" style={{ textDecoration: 'none' }}>
-                                <button style={{ ...actionButtonStyle, background: '#1e293b', color: 'white' }}>
+                                <button style={{ ...actionButtonStyle, background: 'var(--color-primary)', color: 'white' }}>
                                     <Plus size={20} />
                                     <span>New Job Work<br /><small style={{ opacity: 0.7, fontSize: '0.7rem' }}>नया जॉब वर्क</small></span>
                                 </button>
@@ -299,17 +335,18 @@ export default function Dashboard() {
                 </div>
 
             </div>
-        </div>
+        </div >
     )
 }
 
 // Sub-components & Styles
 const cardStyle: React.CSSProperties = {
-    background: 'white',
-    padding: '1.25rem',
-    borderRadius: '16px',
-    border: '1px solid #f1f5f9',
-    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)',
+    background: 'var(--color-surface)',
+    border: '1px solid var(--color-border)',
+    borderRadius: 'var(--radius-lg)',
+    padding: 'var(--spacing-lg)',
+    boxShadow: 'var(--shadow-sm)',
+    transition: 'all var(--transition-base)',
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'space-between',
@@ -320,60 +357,63 @@ const cardHeaderStyle: React.CSSProperties = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    fontSize: '0.85rem',
-    fontWeight: 600,
-    color: '#475569',
+    marginBottom: 'var(--spacing-md)',
+    fontSize: 'var(--text-sm)',
+    fontWeight: 'var(--font-semibold)',
+    color: 'var(--color-text-secondary)',
     lineHeight: 1.2
 }
 
 const iconBoxStyle: React.CSSProperties = {
-    width: '36px',
-    height: '36px',
-    borderRadius: '10px',
+    width: '40px',
+    height: '40px',
+    borderRadius: 'var(--radius-md)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center'
 }
 
 const cardValueStyle: React.CSSProperties = {
-    fontSize: '1.6rem',
-    fontWeight: 800,
-    color: '#1e293b',
-    margin: '0.5rem 0'
+    fontSize: 'var(--text-3xl)',
+    fontWeight: 'var(--font-bold)',
+    color: 'var(--color-text-primary)',
+    marginBottom: 'var(--spacing-sm)'
 }
 
 const thStyle: React.CSSProperties = {
-    padding: '1rem',
+    background: 'var(--color-bg)',
+    borderBottom: '2px solid var(--color-border)',
+    padding: 'var(--spacing-md)',
     textAlign: 'left',
-    fontSize: '0.75rem',
-    color: '#94a3b8',
+    fontSize: 'var(--text-xs)',
+    color: 'var(--color-text-secondary)',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
-    fontWeight: 600
+    fontWeight: 'var(--font-semibold)'
 }
 
 const tdStyle: React.CSSProperties = {
     padding: '1.25rem 1rem',
-    fontSize: '0.9rem',
-    color: '#475569'
+    fontSize: 'var(--text-sm)',
+    color: 'var(--color-text-primary)'
 }
 
 const actionButtonStyle: React.CSSProperties = {
     width: '100%',
     padding: '1.25rem 1rem',
-    borderRadius: '12px',
-    border: '1px solid #e2e8f0',
-    background: 'white',
+    borderRadius: 'var(--radius-lg)',
+    border: '1.5px solid var(--color-border)',
+    background: 'var(--color-surface)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '0.5rem',
+    gap: 'var(--spacing-sm)',
     cursor: 'pointer',
     textAlign: 'center',
-    fontSize: '0.85rem',
-    fontWeight: 600,
-    transition: 'all 0.2s',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+    fontSize: 'var(--text-sm)',
+    fontWeight: 'var(--font-semibold)',
+    transition: 'all var(--transition-base)',
+    boxShadow: 'var(--shadow-sm)'
 }
 
 const StockItem = ({ label, hindiLabel, value, percent, color }: any) => (
@@ -390,3 +430,30 @@ const StockItem = ({ label, hindiLabel, value, percent, color }: any) => (
         </div>
     </div>
 )
+
+const CardSkeleton = ({ loading, children }: { loading: boolean, children: React.ReactNode }) => {
+    if (!loading) return <div style={cardStyle}>{children}</div>
+
+    return (
+        <div style={{ ...cardStyle, position: 'relative', overflow: 'hidden' }}>
+            <div className="shimmer" style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)',
+                animation: 'shimmer 1.5s infinite'
+            }} />
+            <div style={{ height: '20px', width: '60%', background: '#f1f5f9', borderRadius: '4px', marginBottom: '1rem' }} />
+            <div style={{ height: '32px', width: '80%', background: '#f1f5f9', borderRadius: '4px', marginBottom: '1rem' }} />
+            <div style={{ height: '16px', width: '40%', background: '#f1f5f9', borderRadius: '4px' }} />
+            <style>{`
+                @keyframes shimmer {
+                    0% { transform: translateX(-100%); }
+                    100% { transform: translateX(100%); }
+                }
+            `}</style>
+        </div>
+    )
+}

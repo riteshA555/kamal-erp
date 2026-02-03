@@ -32,7 +32,10 @@ export default function UnifiedCatalog() {
     }, [])
 
     const loadData = async () => {
-        setLoading(true)
+        // Don't show loading if we already have data (from cache)
+        if (products.length === 0 && services.length === 0) {
+            setLoading(true)
+        }
         try {
             const [p, s] = await Promise.all([getProducts(), getJobWorkItems()])
             setProducts(p)
@@ -73,6 +76,9 @@ export default function UnifiedCatalog() {
         if (!editingId) return
         try {
             await updateProduct(editingId, {
+                name: editValues.name,
+                category: editValues.category,
+                size: editValues.size,
                 default_weight: Number(editValues.default_weight),
                 wastage_percent: Number(editValues.wastage_percent),
                 labour_cost: Number(editValues.labour_cost)
@@ -88,6 +94,8 @@ export default function UnifiedCatalog() {
         if (!editingId) return
         try {
             await updateJobWorkItem(editingId, {
+                name: editValues.name,
+                unit: editValues.unit,
                 default_rate: Number(editValues.default_rate)
             })
             setEditingId(null)
@@ -220,7 +228,7 @@ export default function UnifiedCatalog() {
                                 padding: '0.6rem 1.5rem',
                                 borderRadius: '8px',
                                 background: itemTypeToAdd === 'Products' ? 'white' : 'transparent',
-                                color: itemTypeToAdd === 'Products' ? 'var(--color-primary)' : '#64748b',
+                                color: itemTypeToAdd === 'Products' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
                                 fontWeight: 700,
                                 cursor: 'pointer',
                                 boxShadow: itemTypeToAdd === 'Products' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
@@ -239,7 +247,7 @@ export default function UnifiedCatalog() {
                                 padding: '0.6rem 1.5rem',
                                 borderRadius: '8px',
                                 background: itemTypeToAdd === 'Services' ? 'white' : 'transparent',
-                                color: itemTypeToAdd === 'Services' ? 'var(--color-primary)' : '#64748b',
+                                color: itemTypeToAdd === 'Services' ? 'var(--color-primary)' : 'var(--color-text-secondary)',
                                 fontWeight: 700,
                                 cursor: 'pointer',
                                 boxShadow: itemTypeToAdd === 'Services' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
@@ -318,8 +326,8 @@ export default function UnifiedCatalog() {
                         <button
                             onClick={() => setIsAdding(false)}
                             style={{
-                                background: '#f1f5f9',
-                                color: '#64748b',
+                                background: 'var(--color-bg)',
+                                color: 'var(--color-text-secondary)',
                                 border: 'none',
                                 padding: '0.8rem 1.5rem',
                                 borderRadius: '12px',
@@ -392,7 +400,7 @@ export default function UnifiedCatalog() {
                             padding: '0.6rem 1.25rem',
                             border: 'none',
                             background: tab === 'Products' ? 'var(--color-primary)' : 'transparent',
-                            color: tab === 'Products' ? 'white' : '#64748b',
+                            color: tab === 'Products' ? 'white' : 'var(--color-text-secondary)',
                             cursor: 'pointer',
                             fontWeight: 600,
                             display: 'flex',
@@ -410,7 +418,7 @@ export default function UnifiedCatalog() {
                             padding: '0.6rem 1.25rem',
                             border: 'none',
                             background: tab === 'Services' ? 'var(--color-primary)' : 'transparent',
-                            color: tab === 'Services' ? 'white' : '#64748b',
+                            color: tab === 'Services' ? 'white' : 'var(--color-text-secondary)',
                             cursor: 'pointer',
                             fontWeight: 600,
                             display: 'flex',
@@ -424,95 +432,142 @@ export default function UnifiedCatalog() {
                 </div>
             </div>
 
-            {loading ? <p>Loading catalog...</p> : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
-                    {tab === 'Products' ? (
-                        filteredProducts.length === 0 ? <p style={{ gridColumn: '1 / -1', textAlign: 'center', color: '#64748b' }}>No products found.</p> :
-                            filteredProducts.map(p => (
-                                <div key={p.id} style={{ background: 'white', padding: '1.25rem', borderRadius: '12px', border: editingId === p.id ? '2px solid var(--color-primary)' : '1px solid var(--color-border)', position: 'relative' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
+                {tab === 'Products' ? (
+                    filteredProducts.length === 0 ? <p style={{ gridColumn: '1 / -1', textAlign: 'center', color: '#64748b' }}>No products found.</p> :
+                        filteredProducts.map(p => (
+                            <div key={p.id} style={{ background: 'white', padding: '1.25rem', borderRadius: '12px', border: editingId === p.id ? '2px solid var(--color-primary)' : '1px solid var(--color-border)', position: 'relative' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                    {editingId === p.id ? (
+                                        <input
+                                            type="text"
+                                            style={{ fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 800, color: '#475569', width: '100px' }}
+                                            value={editValues.category}
+                                            onChange={e => setEditValues({ ...editValues, category: e.target.value })}
+                                        />
+                                    ) : (
                                         <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 800, color: '#94a3b8' }}>{p.category}</span>
-                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                            {editingId === p.id ? (
-                                                <>
-                                                    <button onClick={handleUpdateProduct} style={{ background: '#10b981', padding: '4px', borderRadius: '4px', color: 'white', border: 'none', cursor: 'pointer' }}><Check size={14} /></button>
-                                                    <button onClick={cancelEditing} style={{ background: '#64748b', padding: '4px', borderRadius: '4px', color: 'white', border: 'none', cursor: 'pointer' }}><X size={14} /></button>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <button onClick={() => startEditing(p)} style={{ background: '#f1f5f9', padding: '4px', borderRadius: '4px', color: '#64748b', border: 'none', cursor: 'pointer' }}><Edit2 size={14} /></button>
-                                                    <button onClick={() => handleDeleteProduct(p.id, p.name)} style={{ background: '#fef2f2', padding: '4px', borderRadius: '4px', color: '#ef4444', border: 'none', cursor: 'pointer' }}><Trash2 size={14} /></button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.8rem' }}>{p.name} {p.size && `- ${p.size}`}</div>
-
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.85rem' }}>
-                                        <div style={{ background: '#f8fafc', padding: '0.4rem', borderRadius: '6px' }}>
-                                            Weight: {editingId === p.id ?
-                                                <input type="number" style={{ width: '50px', marginLeft: '5px' }} value={editValues.default_weight} onChange={e => setEditValues({ ...editValues, default_weight: e.target.value })} /> :
-                                                <b>{p.default_weight}g</b>
-                                            }
-                                        </div>
-                                        <div style={{ background: '#f8fafc', padding: '0.4rem', borderRadius: '6px' }}>
-                                            Wastage: {editingId === p.id ?
-                                                <input type="number" style={{ width: '40px', marginLeft: '5px' }} value={editValues.wastage_percent} onChange={e => setEditValues({ ...editValues, wastage_percent: e.target.value })} /> :
-                                                <b>{p.wastage_percent}%</b>
-                                            }
-                                        </div>
-                                        <div style={{ background: '#f8fafc', padding: '0.4rem', borderRadius: '6px', gridColumn: '1 / -1' }}>
-                                            Labour: {editingId === p.id ?
-                                                <input type="number" style={{ width: '80px', marginLeft: '5px' }} value={editValues.labour_cost} onChange={e => setEditValues({ ...editValues, labour_cost: e.target.value })} /> :
-                                                <b>₹{p.labour_cost}</b>
-                                            }
-                                        </div>
-                                    </div>
-
-                                    <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Current Stock</span>
-                                        <span style={{ fontWeight: 800, color: p.current_stock > 0 ? '#10b981' : '#ef4444' }}>{p.current_stock} pcs</span>
-                                    </div>
-                                </div>
-                            ))
-                    ) : (
-                        filteredServices.length === 0 ? <p style={{ gridColumn: '1 / -1', textAlign: 'center', color: '#64748b' }}>No services found.</p> :
-                            filteredServices.map(s => (
-                                <div key={s.id} style={{ background: 'white', padding: '1.25rem', borderRadius: '12px', border: editingId === s.id ? '2px solid var(--color-primary)' : '1px solid var(--color-border)', position: 'relative' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                                        <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{s.name}</div>
-                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                            {editingId === s.id ? (
-                                                <>
-                                                    <button onClick={handleUpdateService} style={{ background: '#10b981', padding: '4px', borderRadius: '4px', color: 'white', border: 'none', cursor: 'pointer' }}><Check size={14} /></button>
-                                                    <button onClick={cancelEditing} style={{ background: '#64748b', padding: '4px', borderRadius: '4px', color: 'white', border: 'none', cursor: 'pointer' }}><X size={14} /></button>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <button onClick={() => startEditing(s)} style={{ background: '#f1f5f9', padding: '4px', borderRadius: '4px', color: '#64748b', border: 'none', cursor: 'pointer' }}><Edit2 size={14} /></button>
-                                                    <button onClick={() => handleDeleteService(s.id, s.name)} style={{ background: '#fef2f2', padding: '4px', borderRadius: '4px', color: '#ef4444', border: 'none', cursor: 'pointer' }}><Trash2 size={14} /></button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--color-primary)' }}>
-                                        {editingId === s.id ? (
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                ₹<input type="number" style={{ width: '100px', fontSize: '1.2rem' }} value={editValues.default_rate} onChange={e => setEditValues({ ...editValues, default_rate: e.target.value })} />
-                                                <span style={{ fontSize: '0.8rem', fontWeight: 400, color: '#64748b' }}>/ {s.unit}</span>
-                                            </div>
+                                    )}
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        {editingId === p.id ? (
+                                            <>
+                                                <button onClick={handleUpdateProduct} style={{ background: 'var(--color-success)', padding: '4px', borderRadius: '4px', color: 'white', border: 'none', cursor: 'pointer' }}><Check size={14} /></button>
+                                                <button onClick={cancelEditing} style={{ background: 'var(--color-text-secondary)', padding: '4px', borderRadius: '4px', color: 'white', border: 'none', cursor: 'pointer' }}><X size={14} /></button>
+                                            </>
                                         ) : (
-                                            <>₹{s.default_rate.toLocaleString()} <span style={{ fontSize: '0.8rem', fontWeight: 400, color: '#64748b' }}>/ {s.unit}</span></>
+                                            <>
+                                                <button onClick={() => startEditing(p)} style={{ background: 'var(--color-bg)', padding: '4px', borderRadius: '4px', color: 'var(--color-text-secondary)', border: 'none', cursor: 'pointer' }}><Edit2 size={14} /></button>
+                                                <button onClick={() => handleDeleteProduct(p.id, p.name)} style={{ background: 'var(--color-error-light)', padding: '4px', borderRadius: '4px', color: 'var(--color-error)', border: 'none', cursor: 'pointer' }}><Trash2 size={14} /></button>
+                                            </>
                                         )}
                                     </div>
-                                    <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#94a3b8' }}>
-                                        Base service rate used for Job Work calculation.
+                                </div>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.8rem' }}>
+                                    {editingId === p.id ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                            <input
+                                                type="text"
+                                                style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                                                value={editValues.name}
+                                                onChange={e => setEditValues({ ...editValues, name: e.target.value })}
+                                                placeholder="Product Name"
+                                            />
+                                            <input
+                                                type="text"
+                                                style={{ width: '100%', padding: '4px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.9rem' }}
+                                                value={editValues.size}
+                                                onChange={e => setEditValues({ ...editValues, size: e.target.value })}
+                                                placeholder="Size (e.g. 18 inch)"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <>{p.name} {p.size && `- ${p.size}`}</>
+                                    )}
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.85rem' }}>
+                                    <div style={{ background: '#f8fafc', padding: '0.4rem', borderRadius: '6px' }}>
+                                        Weight: {editingId === p.id ?
+                                            <input type="number" style={{ width: '50px', marginLeft: '5px' }} value={editValues.default_weight} onChange={e => setEditValues({ ...editValues, default_weight: e.target.value })} /> :
+                                            <b>{p.default_weight}g</b>
+                                        }
+                                    </div>
+                                    <div style={{ background: '#f8fafc', padding: '0.4rem', borderRadius: '6px' }}>
+                                        Wastage: {editingId === p.id ?
+                                            <input type="number" style={{ width: '40px', marginLeft: '5px' }} value={editValues.wastage_percent} onChange={e => setEditValues({ ...editValues, wastage_percent: e.target.value })} /> :
+                                            <b>{p.wastage_percent}%</b>
+                                        }
+                                    </div>
+                                    <div style={{ background: '#f8fafc', padding: '0.4rem', borderRadius: '6px', gridColumn: '1 / -1' }}>
+                                        Labour: {editingId === p.id ?
+                                            <input type="number" style={{ width: '80px', marginLeft: '5px' }} value={editValues.labour_cost} onChange={e => setEditValues({ ...editValues, labour_cost: e.target.value })} /> :
+                                            <b>₹{p.labour_cost}</b>
+                                        }
                                     </div>
                                 </div>
-                            ))
-                    )}
-                </div>
-            )}
+
+                                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Current Stock</span>
+                                    <span style={{ fontWeight: 800, color: p.current_stock > 0 ? 'var(--color-success)' : 'var(--color-error)' }}>{p.current_stock} pcs</span>
+                                </div>
+                            </div>
+                        ))
+                ) : (
+                    filteredServices.length === 0 ? <p style={{ gridColumn: '1 / -1', textAlign: 'center', color: '#64748b' }}>No services found.</p> :
+                        filteredServices.map(s => (
+                            <div key={s.id} style={{ background: 'white', padding: '1.25rem', borderRadius: '12px', border: editingId === s.id ? '2px solid var(--color-primary)' : '1px solid var(--color-border)', position: 'relative' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                                    {editingId === s.id ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
+                                            <input
+                                                type="text"
+                                                style={{ width: '100%', padding: '6px', fontSize: '1.1rem', fontWeight: 700, borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                                                value={editValues.name}
+                                                onChange={e => setEditValues({ ...editValues, name: e.target.value })}
+                                            />
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '1.5rem', fontWeight: 800, color: 'var(--color-primary)' }}>
+                                                ₹<input type="number" style={{ width: '100px', fontSize: '1.2rem', borderRadius: '4px', border: '1px solid #cbd5e1' }} value={editValues.default_rate} onChange={e => setEditValues({ ...editValues, default_rate: e.target.value })} />
+                                                <select
+                                                    style={{ fontSize: '0.8rem', fontWeight: 400, color: '#64748b', padding: '4px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                                                    value={editValues.unit}
+                                                    onChange={e => setEditValues({ ...editValues, unit: e.target.value })}
+                                                >
+                                                    <option value="Gram">/ Gram</option>
+                                                    <option value="Piece">/ Piece</option>
+                                                    <option value="Fixed">/ Fixed</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{s.name}</div>
+                                            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--color-primary)', marginTop: '0.5rem' }}>
+                                                ₹{s.default_rate.toLocaleString()} <span style={{ fontSize: '0.8rem', fontWeight: 400, color: '#64748b' }}>/ {s.unit}</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '1rem' }}>
+                                        {editingId === s.id ? (
+                                            <>
+                                                <button onClick={handleUpdateService} style={{ background: 'var(--color-success)', padding: '6px', borderRadius: '6px', color: 'white', border: 'none', cursor: 'pointer' }}><Check size={16} /></button>
+                                                <button onClick={cancelEditing} style={{ background: 'var(--color-text-secondary)', padding: '6px', borderRadius: '6px', color: 'white', border: 'none', cursor: 'pointer' }}><X size={16} /></button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <button onClick={() => startEditing(s)} style={{ background: 'var(--color-bg)', padding: '6px', borderRadius: '6px', color: 'var(--color-text-secondary)', border: 'none', cursor: 'pointer' }}><Edit2 size={16} /></button>
+                                                <button onClick={() => handleDeleteService(s.id, s.name)} style={{ background: '#fef2f2', padding: '6px', borderRadius: '6px', color: '#ef4444', border: 'none', cursor: 'pointer' }}><Trash2 size={16} /></button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                                <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#94a3b8' }}>
+                                    Base service rate used for Job Work calculation.
+                                </div>
+                            </div>
+                        ))
+                )}
+            </div>
         </div>
     )
 }

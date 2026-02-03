@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient'
+import { cacheStore } from './cacheStore'
 
 export interface Expense {
     id: string;
@@ -14,14 +15,20 @@ export interface Expense {
     created_at: string;
 }
 
-export const getExpenses = async () => {
-    const { data, error } = await supabase
-        .from('expenses')
-        .select('*')
-        .order('date', { ascending: false })
+const CACHE_KEYS = {
+    EXPENSES: 'expenses_list'
+}
 
-    if (error) throw error
-    return data as Expense[]
+export const getExpenses = async () => {
+    return cacheStore.getOrFetch(CACHE_KEYS.EXPENSES, async () => {
+        const { data, error } = await supabase
+            .from('expenses')
+            .select('*')
+            .order('date', { ascending: false })
+
+        if (error) throw error
+        return data as Expense[]
+    })
 }
 
 export const createExpense = async (expense: Omit<Expense, 'id' | 'created_at'>) => {
@@ -32,5 +39,25 @@ export const createExpense = async (expense: Omit<Expense, 'id' | 'created_at'>)
         .single()
 
     if (error) throw error
+
+    // Invalidate related caches
+    cacheStore.invalidate(CACHE_KEYS.EXPENSES)
+    cacheStore.invalidate('dashboard_stats')
+    cacheStore.invalidate('pl_report')
+
     return data as Expense
+}
+
+export const deleteExpense = async (expenseId: string) => {
+    const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', expenseId)
+
+    if (error) throw error
+
+    // Invalidate related caches
+    cacheStore.invalidate(CACHE_KEYS.EXPENSES)
+    cacheStore.invalidate('dashboard_stats')
+    cacheStore.invalidate('pl_report')
 }

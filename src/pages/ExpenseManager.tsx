@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react'
-import { getExpenses, createExpense, Expense } from '../services/expenseService'
-import { Plus, IndianRupee, Calendar, FileText } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { getExpenses, createExpense, deleteExpense, Expense } from '../services/expenseService'
+import { Plus, IndianRupee, Calendar, FileText, Trash2 } from 'lucide-react'
+import { formatIndianRupees } from '../utils/formatters'
 
 export default function ExpenseManager() {
     const [expenses, setExpenses] = useState<Expense[]>([])
     const [loading, setLoading] = useState(true)
     const [isAdding, setIsAdding] = useState(false)
     const [error, setError] = useState('')
+    const [deleting, setDeleting] = useState<string | null>(null)
 
     // Form State
     const [formData, setFormData] = useState({
@@ -24,8 +26,12 @@ export default function ExpenseManager() {
         loadExpenses()
     }, [])
 
-    const loadExpenses = async () => {
+    const loadExpenses = useCallback(async () => {
         try {
+            // Only show loading on first load when there's no data
+            if (expenses.length === 0) {
+                setLoading(true)
+            }
             const data = await getExpenses()
             setExpenses(data)
         } catch (err: any) {
@@ -33,9 +39,9 @@ export default function ExpenseManager() {
         } finally {
             setLoading(false)
         }
-    }
+    }, [expenses.length])
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = useCallback(async (e: React.FormEvent) => {
         e.preventDefault()
         setError('')
         if (!formData.head || !formData.amount) {
@@ -51,7 +57,7 @@ export default function ExpenseManager() {
                 notes: formData.notes,
                 gst_enabled: formData.gst_enabled,
                 gst_rate: formData.gst_enabled ? Number(formData.gst_rate) : 0,
-                gst_amount: formData.gst_enabled ? (Number(formData.amount) * Number(formData.gst_rate) / (100 + Number(formData.gst_rate))) : 0, // Inclusive calc
+                gst_amount: formData.gst_enabled ? (Number(formData.amount) * Number(formData.gst_rate) / (100 + Number(formData.gst_rate))) : 0,
                 vendor_name: formData.vendor_name,
                 invoice_number: formData.invoice_number
             })
@@ -70,6 +76,22 @@ export default function ExpenseManager() {
         } catch (err: any) {
             setError(err.message)
         }
+    }, [formData, loadExpenses])
+
+    const handleDelete = async (expenseId: string, expenseHead: string) => {
+        if (!confirm(`Are you sure you want to delete expense "${expenseHead}"? This action cannot be undone.`)) {
+            return
+        }
+
+        try {
+            setDeleting(expenseId)
+            await deleteExpense(expenseId)
+            await loadExpenses()
+        } catch (err: any) {
+            alert(`Failed to delete expense: ${err.message}`)
+        } finally {
+            setDeleting(null)
+        }
     }
 
     return (
@@ -82,7 +104,7 @@ export default function ExpenseManager() {
                         display: 'flex',
                         alignItems: 'center',
                         gap: '0.5rem',
-                        background: isAdding ? '#64748b' : 'var(--color-primary)',
+                        background: isAdding ? 'var(--color-text-secondary)' : 'var(--color-primary)',
                         color: 'white',
                         padding: '0.6em 1.2em',
                         borderRadius: '8px',
@@ -95,7 +117,7 @@ export default function ExpenseManager() {
                 </button>
             </div>
 
-            {error && <div style={{ background: '#fee2e2', color: '#dc2626', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem' }}>{error}</div>}
+            {error && <div style={{ background: 'var(--color-error-light)', color: 'var(--color-error)', padding: '1rem', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem' }}>{error}</div>}
 
             {isAdding && (
                 <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', border: '1px solid var(--color-border)', marginBottom: '1.5rem' }}>
@@ -191,29 +213,65 @@ export default function ExpenseManager() {
                 </div>
             )}
 
-            {loading ? (
+            {loading && expenses.length === 0 ? (
                 <p>Loading expenses...</p>
             ) : (
                 <div style={{ overflowX: 'auto', background: 'white', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                        <thead style={{ background: '#f8fafc', borderBottom: '1px solid var(--color-border)' }}>
+                        <thead style={{ background: 'var(--color-bg)', borderBottom: '1px solid var(--color-border)' }}>
                             <tr>
                                 <th style={{ padding: '0.75rem 1rem' }}>Date</th>
                                 <th style={{ padding: '0.75rem 1rem' }}>Head</th>
                                 <th style={{ padding: '0.75rem 1rem' }}>Notes</th>
                                 <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Amount</th>
+                                <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {expenses.length === 0 ? (
-                                <tr><td colSpan={4} style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>No expenses recorded yet.</td></tr>
+                                <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-secondary)' }}>No expenses recorded yet.</td></tr>
                             ) : (
                                 expenses.map(exp => (
                                     <tr key={exp.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
                                         <td style={{ padding: '0.75rem 1rem' }}>{exp.date}</td>
                                         <td style={{ padding: '0.75rem 1rem', fontWeight: 500 }}>{exp.head}</td>
-                                        <td style={{ padding: '0.75rem 1rem', color: '#64748b' }}>{exp.notes || '-'}</td>
-                                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 600 }}>₹{Number(exp.amount).toFixed(2)}</td>
+                                        <td style={{ padding: '0.75rem 1rem', color: 'var(--color-text-secondary)' }}>{exp.notes || '-'}</td>
+                                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 600 }}>
+                                            ₹{formatIndianRupees(Number(exp.amount))}
+                                        </td>
+                                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                                            <button
+                                                onClick={() => handleDelete(exp.id, exp.head)}
+                                                disabled={deleting === exp.id}
+                                                style={{
+                                                    background: deleting === exp.id ? 'var(--color-border)' : 'var(--color-error-light)',
+                                                    color: deleting === exp.id ? 'var(--color-text-secondary)' : 'var(--color-error)',
+                                                    border: 'none',
+                                                    padding: '0.4rem 0.6rem',
+                                                    borderRadius: '6px',
+                                                    cursor: deleting === exp.id ? 'not-allowed' : 'pointer',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.3rem',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: 500,
+                                                    transition: 'all 0.2s'
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    if (deleting !== exp.id) {
+                                                        e.currentTarget.style.background = '#fecaca'
+                                                    }
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    if (deleting !== exp.id) {
+                                                        e.currentTarget.style.background = '#fee2e2'
+                                                    }
+                                                }}
+                                            >
+                                                <Trash2 size={14} />
+                                                {deleting === exp.id ? 'Deleting...' : 'Delete'}
+                                            </button>
+                                        </td>
                                     </tr>
                                 ))
                             )}
