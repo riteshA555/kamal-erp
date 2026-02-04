@@ -29,8 +29,13 @@ export const createOrder = async (order: Omit<Order, 'id' | 'created_at' | 'upda
     })
 
     if (error) {
-        console.error('RPC Error:', error)
-        throw error
+        console.error('RPC Error Details:', {
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            code: error.code
+        })
+        throw new Error(error.message || 'Failed to create order')
     }
 
     // Invalidate related caches
@@ -39,6 +44,19 @@ export const createOrder = async (order: Omit<Order, 'id' | 'created_at' | 'upda
     cacheStore.invalidatePattern('stock_') // Orders affect stock
 
     return data
+}
+
+export const updateOrderStatus = async (orderId: string, status: string) => {
+    const { data, error } = await supabase
+        .from('orders')
+        .update({ status })
+        .eq('id', orderId)
+        .select()
+
+    if (error) throw error
+    cacheStore.invalidate(CACHE_KEYS.ORDERS)
+    cacheStore.invalidate('dashboard_stats')
+    return data[0]
 }
 
 export const deleteOrder = async (orderId: string) => {
@@ -115,4 +133,3 @@ export const deleteOrders = async (orderIds: string[]) => {
     cacheStore.invalidate('dashboard_stats')
     cacheStore.invalidatePattern('stock_')
 }
-

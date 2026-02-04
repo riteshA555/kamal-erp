@@ -1,27 +1,35 @@
 import { useState, useMemo, useCallback } from 'react'
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { useAuth } from './AuthProvider'
-import { useSettings } from './SettingsContext'
-import { t } from '../utils/i18n'
+import { useAuth } from '../features/auth/AuthProvider'
+import { useSettings } from '../features/settings/SettingsContext'
+import { t } from '../shared/utils/i18n'
 import { Menu, X, LayoutDashboard, ShoppingCart, Settings, LogOut, Wallet, BarChart3, BookOpen, Users, Receipt, LineChart, Book, Package, User, ChevronDown, Truck } from 'lucide-react'
 
-// Optimized: Removed direct import of service functions to avoid circular deps and unnecessary bundling if not used
-// Prefetching logic removed to prevent accidental heavy API calls on hover
+// Import preloadable components
+import { PreloadableComponent } from '../shared/utils/lazyWithPreload'
+
+// Component map for preloading
+const componentMap: Record<string, PreloadableComponent<any>> = {}
+
+// This will be populated by App.tsx exports
+export const registerPreloadableComponents = (components: Record<string, PreloadableComponent<any>>) => {
+    Object.assign(componentMap, components)
+}
 
 const NAV_ITEMS_DATA = [
-    { name: 'Dashboard', key: 'dashboard', path: '/', icon: LayoutDashboard },
-    { name: 'Orders', key: 'orders', path: '/orders', icon: ShoppingCart },
-    { name: 'Expenses', key: 'expenses', path: '/expenses', icon: Wallet },
-    { name: 'Accounting', key: 'accounting', path: '/accounting', icon: BarChart3 },
-    { name: 'Customer Ledger', key: 'ledger', path: '/ledger', icon: BookOpen },
-    { name: 'Vendor Master', key: 'vendors', path: '/vendors', icon: Truck },
-    { name: 'Karigar Master', key: 'karigar', path: '/karigar', icon: Users },
-    { name: 'Karigar Settlement', key: 'settlement', path: '/settlement', icon: Wallet },
-    { name: 'GST Module', key: 'gst_module', path: '/gst-reports', icon: Receipt },
-    { name: 'Silver Rates', key: 'silver_rates', path: '/rates', icon: LineChart },
-    { name: 'Business Catalog', key: 'catalog', path: '/catalog', icon: Book },
-    { name: 'Stock Management', key: 'stock', path: '/stock', icon: Package },
-    { name: 'Settings', key: 'settings', path: '/settings', icon: Settings },
+    { name: 'Dashboard', key: 'dashboard', path: '/', icon: LayoutDashboard, preloadKey: 'Dashboard' },
+    { name: 'Orders', key: 'orders', path: '/orders', icon: ShoppingCart, preloadKey: 'OrderList' },
+    { name: 'Expenses', key: 'expenses', path: '/expenses', icon: Wallet, preloadKey: 'ExpenseManager' },
+    { name: 'Accounting', key: 'accounting', path: '/accounting', icon: BarChart3, preloadKey: 'AccountingDashboard' },
+    { name: 'Customer Ledger', key: 'ledger', path: '/ledger', icon: BookOpen, preloadKey: 'LedgerStatement' },
+    { name: 'Vendor Master', key: 'vendors', path: '/vendors', icon: Truck, preloadKey: 'VendorMaster' },
+    { name: 'Karigar Master', key: 'karigar', path: '/karigar', icon: Users, preloadKey: 'KarigarMaster' },
+    { name: 'Karigar Settlement', key: 'settlement', path: '/settlement', icon: Wallet, preloadKey: 'KarigarSettlement' },
+    { name: 'GST Module', key: 'gst_module', path: '/gst-reports', icon: Receipt, preloadKey: 'GSTReports' },
+    { name: 'Silver Rates', key: 'silver_rates', path: '/rates', icon: LineChart, preloadKey: 'SilverRateManager' },
+    { name: 'Business Catalog', key: 'catalog', path: '/catalog', icon: Book, preloadKey: 'UnifiedCatalog' },
+    { name: 'Stock Management', key: 'stock', path: '/stock', icon: Package, preloadKey: 'StockManagement' },
+    { name: 'Settings', key: 'settings', path: '/settings', icon: Settings, preloadKey: 'Settings' },
 ]
 
 export default function Layout() {
@@ -36,9 +44,14 @@ export default function Layout() {
     const closeSidebar = useCallback(() => setSidebarOpen(false), [])
     const toggleProfileDropdown = useCallback(() => setProfileDropdownOpen(prev => !prev), [])
 
-
-    // Styles that don't depend on state can be static/memoized, but inline styles with state need variables.
-    // We keep it simple here but rely on the fact that Layout doesn't re-render often unless route changes.
+    // Preload component on hover
+    const handlePreload = useCallback((preloadKey?: string) => {
+        if (preloadKey && componentMap[preloadKey]) {
+            componentMap[preloadKey].preload().catch(() => {
+                // Silently fail if preload doesn't work
+            })
+        }
+    }, [])
 
     return (
         <div style={{ display: 'flex', minHeight: '100vh' }}>
@@ -104,6 +117,8 @@ export default function Layout() {
                                                 e.currentTarget.style.background = 'var(--color-bg)'
                                                 e.currentTarget.style.color = 'var(--color-text-primary)'
                                             }
+                                            // Preload component on hover
+                                            handlePreload(item.preloadKey)
                                         }}
                                         onMouseLeave={(e) => {
                                             if (!isActive) {

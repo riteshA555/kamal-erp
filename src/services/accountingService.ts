@@ -116,7 +116,7 @@ export const getAssetLedgers = async () => {
     // Fetches Customers (Assets) for the dropdown
     const { data, error } = await supabase
         .from('ledgers')
-        .select('id, name')
+        .select('id, name, contact_info, address, gst_number, credit_limit, payment_terms')
         .eq('type', 'ASSET')
         .order('name')
 
@@ -171,7 +171,7 @@ export const getLiabilityLedgers = async () => {
     // Fetches Vendors (Liabilities)
     const { data, error } = await supabase
         .from('ledgers')
-        .select('id, name')
+        .select('id, name, contact_info, address, gst_number')
         .eq('type', 'LIABILITY')
         .order('name')
 
@@ -179,26 +179,52 @@ export const getLiabilityLedgers = async () => {
     return data
 }
 
-export const createLedger = async (name: string, type: 'ASSET' | 'LIABILITY' | 'EXPENSE' | 'INCOME') => {
-    const { data, error } = await supabase
+export const createLedger = async (data: { name: string, type: 'ASSET' | 'LIABILITY' | 'EXPENSE' | 'INCOME', contact_info?: string, address?: string, gst_number?: string, credit_limit?: number, payment_terms?: string }) => {
+    const { data: res, error } = await supabase
         .from('ledgers')
-        .insert({ name, type })
+        .insert(data)
         .select()
 
     if (error) throw error
-    return data[0]
+    return res[0]
 }
 
 
-export const deleteLedger = async (id: string) => {
+export const deleteLedger = async (id: string, force: boolean = false) => {
     // 1. Check for transactions
-    const { count, error: countError } = await supabase
+    const { data: transactions, count, error: countError } = await supabase
         .from('transactions')
-        .select('*', { count: 'exact', head: true })
+        .select('*', { count: 'exact' })
         .eq('ledger_id', id)
 
     if (countError) throw countError
-    if (count && count > 0) throw new Error("Cannot delete Ledger with existing transactions. Please clear dues first.")
+
+    if (count && count > 0) {
+        if (!force) {
+            // Calculate total balance
+            const totalDebit = transactions?.reduce((sum: number, t: any) => sum + Number(t.debit || 0), 0) || 0
+            const totalCredit = transactions?.reduce((sum: number, t: any) => sum + Number(t.credit || 0), 0) || 0
+            const balance = Math.abs(totalCredit - totalDebit)
+
+            throw new Error(
+                `❌ Cannot delete! This vendor has ${count} transaction(s).\n\n` +
+                `📊 Balance: ₹${balance.toLocaleString('en-IN')}\n\n` +
+                `⚠️ इस विक्रेता के ${count} लेनदेन हैं।\n` +
+                `बैलेंस: ₹${balance.toLocaleString('en-IN')}\n\n` +
+                `To delete:\n` +
+                `1. Clear all dues (make balance ₹0)\n` +
+                `2. Or contact support for force delete`
+            )
+        }
+
+        // Force delete: Delete all transactions first
+        const { error: txnDeleteError } = await supabase
+            .from('transactions')
+            .delete()
+            .eq('ledger_id', id)
+
+        if (txnDeleteError) throw txnDeleteError
+    }
 
     // 2. Delete Ledger
     const { error } = await supabase

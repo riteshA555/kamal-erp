@@ -12,7 +12,7 @@ export interface Order {
     gst_amount: number;
     subtotal: number;
     total_amount: number;
-    status: 'Pending' | 'In Progress' | 'Completed';
+    status: 'Pending' | 'In Progress' | 'Completed' | 'Cancelled';
     created_at: string;
     updated_at: string;
     items?: OrderItem[];
@@ -54,6 +54,7 @@ export interface Product {
     wastage_percent: number;
     labour_cost: number;
     current_stock: number;
+    gst_rate?: number;
     is_active: boolean;
 }
 

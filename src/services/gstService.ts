@@ -17,46 +17,56 @@ export interface ITCStat {
     closingBalance: number;
 }
 
-export const getGSTOrders = async (month?: string) => {
+export const getGSTOrders = async (startDate?: string, endDate?: string) => {
     let query = supabase
         .from('orders')
-        .select('*')
+        .select('*') // JOIN reverted to fix "Nothing showing" error
         .eq('gst_enabled', true)
         .order('order_date', { ascending: false })
 
-    if (month) {
-        const startDate = `${month}-01`
-        const [year, m] = month.split('-').map(Number)
-        const nextMonth = m === 12 ? 1 : m + 1
-        const nextYear = m === 12 ? year + 1 : year
-        const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
-        query = query.gte('order_date', startDate).lt('order_date', endDate)
+    if (startDate) {
+        query = query.gte('order_date', startDate)
     }
+    if (endDate) {
+        query = query.lte('order_date', endDate) // Use lte to include the end date if needed, or lt for next month start
+    }
+
+    // Note: If using lt next_month_start, ensure endDate is passed correctly.
+    // For simplicity, let's assume endDate is inclusive or caller handles it.
+    // Let's stick to strict dates provided.
 
     const { data, error } = await query
     if (error) throw error
     return data as Order[]
 }
 
-export const getITCExpenses = async (month?: string) => {
+export const getITCExpenses = async (startDate?: string, endDate?: string) => {
     let query = supabase
         .from('expenses')
         .select('*')
+        // .eq('gst_enabled', true) // Removing this check strictly if we want to see all expenses with GST columns set, 
+        // but wait, the previous code had .eq('gst_enabled', true). Let's keep it.
         .eq('gst_enabled', true)
         .order('date', { ascending: false })
 
-    if (month) {
-        const startDate = `${month}-01`
-        const [year, m] = month.split('-').map(Number)
-        const nextMonth = m === 12 ? 1 : m + 1
-        const nextYear = m === 12 ? year + 1 : year
-        const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`
-        query = query.gte('date', startDate).lt('date', endDate)
+    if (startDate) {
+        query = query.gte('date', startDate)
+    }
+    if (endDate) {
+        query = query.lte('date', endDate)
     }
 
     const { data, error } = await query
     if (error) throw error
     return data as Expense[]
+}
+
+export const getGSTCustomers = async () => {
+    const { data, error } = await supabase
+        .from('ledgers')
+        .select('id, name, gst_number, state')
+    if (error) throw error
+    return data
 }
 
 export const calculateGSTSummary = (items: (Order | Expense)[], type: 'output' | 'input') => {

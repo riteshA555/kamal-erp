@@ -56,7 +56,7 @@ export const addProduct = async (product: Omit<Product, 'id' | 'created_at'>) =>
 
     // 2. If there is opening stock, create a stock transaction atomically
     if (initialStock > 0) {
-        const { error: stockError } = await supabase.rpc('add_stock_entry_atomic', {
+        const { data: stockData, error: stockError } = await supabase.rpc('add_stock_entry_atomic', {
             p_date: new Date().toISOString(),
             p_type: 'RAW_IN',
             p_item_type: 'FINISHED_GOODS',
@@ -68,7 +68,14 @@ export const addProduct = async (product: Omit<Product, 'id' | 'created_at'>) =>
             p_rate_at_time: 0,
             p_wastage_percent: product.wastage_percent || 0
         })
-        if (stockError) console.error("Initial stock failed:", stockError)
+
+        if (stockError) {
+            console.error("Initial stock failed:", stockError)
+            throw new Error(`Failed to add opening stock: ${stockError.message}`)
+        }
+
+        // Invalidate stock-related caches since we added stock
+        cacheStore.invalidatePattern('stock_')
     }
 
     cacheStore.invalidate(PRODUCTS_CACHE_KEY)

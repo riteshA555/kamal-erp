@@ -9,7 +9,13 @@ function createStubClient(message: string) {
   const asyncErr = async () => ({ data: null, error: err })
   const chain = () => ({ select: asyncErr, insert: asyncErr, update: asyncErr, delete: asyncErr, upsert: asyncErr })
   return {
-    auth: { getUser: asyncErr, signInWithPassword: asyncErr, signOut: async () => ({ error: err }) },
+    auth: {
+      getUser: asyncErr,
+      signInWithPassword: asyncErr,
+      signOut: async () => ({ error: err }),
+      getSession: asyncErr,
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => { } } } })
+    },
     from: (_: string) => chain(),
     rpc: async (_: string, _args?: any) => ({ data: null, error: err }),
     // generic fallback: any other property access returns an async function which yields an error-shaped response

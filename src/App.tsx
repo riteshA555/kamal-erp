@@ -1,26 +1,50 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider, useAuth } from './components/AuthProvider'
-import { SettingsProvider } from './components/SettingsContext'
+import { AuthProvider, useAuth } from './features/auth/AuthProvider'
+import { SettingsProvider } from './features/settings/SettingsContext'
 import Layout from './components/Layout'
-import { Suspense, lazy } from 'react'
-import LoadingSpinner from './components/LoadingSpinner'
+import { Suspense } from 'react'
+import LoadingSpinner from './shared/ui/LoadingSpinner'
+import { lazyWithPreload } from './shared/utils/lazyWithPreload'
 
-// Lazy Load Pages
-const Login = lazy(() => import('./pages/Login'))
-const Dashboard = lazy(() => import('./pages/Dashboard'))
-const OrderList = lazy(() => import('./pages/OrderList'))
-const OrderCreate = lazy(() => import('./pages/OrderCreate'))
-const ExpenseManager = lazy(() => import('./pages/ExpenseManager'))
-const AccountingDashboard = lazy(() => import('./pages/AccountingDashboard'))
-const LedgerStatement = lazy(() => import('./pages/LedgerStatement'))
-const VendorMaster = lazy(() => import('./pages/VendorMaster'))
-const KarigarMaster = lazy(() => import('./pages/KarigarMaster'))
-const KarigarSettlement = lazy(() => import('./pages/KarigarSettlement'))
-const GSTReports = lazy(() => import('./pages/GSTReports'))
-const SilverRateManager = lazy(() => import('./pages/SilverRateManager'))
-const UnifiedCatalog = lazy(() => import('./pages/UnifiedCatalog'))
-const StockManagement = lazy(() => import('./pages/StockManagement'))
-const Settings = lazy(() => import('./pages/Settings'))
+// Lazy Load Pages with Preload Support
+const Login = lazyWithPreload(() => import('./features/auth/pages/Login'))
+const Dashboard = lazyWithPreload(() => import('./features/dashboard/pages/Dashboard'))
+const OrderList = lazyWithPreload(() => import('./features/orders/pages/OrderList'))
+const OrderCreate = lazyWithPreload(() => import('./features/orders/pages/OrderCreate'))
+const ExpenseManager = lazyWithPreload(() => import('./features/accounting/pages/ExpenseManager'))
+const AccountingDashboard = lazyWithPreload(() => import('./features/accounting/pages/AccountingDashboard'))
+const LedgerStatement = lazyWithPreload(() => import('./features/accounting/pages/LedgerStatement'))
+const VendorMaster = lazyWithPreload(() => import('./features/contacts/pages/VendorMaster'))
+const CustomerMaster = lazyWithPreload(() => import('./features/contacts/pages/CustomerMaster'))
+const KarigarMaster = lazyWithPreload(() => import('./features/production/pages/KarigarMaster'))
+const KarigarSettlement = lazyWithPreload(() => import('./features/production/pages/KarigarSettlement'))
+const GSTReports = lazyWithPreload(() => import('./features/reports/pages/GSTReports'))
+const SilverRateManager = lazyWithPreload(() => import('./features/rates/pages/SilverRateManager'))
+const UnifiedCatalog = lazyWithPreload(() => import('./features/catalog/pages/UnifiedCatalog'))
+const StockManagement = lazyWithPreload(() => import('./features/inventory/pages/StockManagement'))
+const Settings = lazyWithPreload(() => import('./features/settings/pages/Settings'))
+const OrderPrint = lazyWithPreload(() => import('./features/orders/components/OrderPrint'))
+const InvoicePrint = lazyWithPreload(() => import('./features/orders/components/InvoicePrint'))
+
+// Register components for preloading in Layout
+import { registerPreloadableComponents } from './components/Layout'
+registerPreloadableComponents({
+    Dashboard,
+    OrderList,
+    OrderCreate,
+    ExpenseManager,
+    AccountingDashboard,
+    LedgerStatement,
+    VendorMaster,
+    CustomerMaster,
+    KarigarMaster,
+    KarigarSettlement,
+    GSTReports,
+    SilverRateManager,
+    UnifiedCatalog,
+    StockManagement,
+    Settings,
+})
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
     const { session, loading } = useAuth()
@@ -66,6 +90,16 @@ function App() {
                                     <OrderCreate />
                                 </Suspense>
                             } />
+                            <Route path="orders/:id/print" element={
+                                <Suspense fallback={<LoadingSpinner />}>
+                                    <OrderPrint />
+                                </Suspense>
+                            } />
+                            <Route path="orders/:id/invoice" element={
+                                <Suspense fallback={<LoadingSpinner />}>
+                                    <InvoicePrint />
+                                </Suspense>
+                            } />
                             <Route path="expenses" element={
                                 <Suspense fallback={<LoadingSpinner />}>
                                     <ExpenseManager />
@@ -84,6 +118,11 @@ function App() {
                             <Route path="vendors" element={
                                 <Suspense fallback={<LoadingSpinner />}>
                                     <VendorMaster />
+                                </Suspense>
+                            } />
+                            <Route path="customers" element={
+                                <Suspense fallback={<LoadingSpinner />}>
+                                    <CustomerMaster />
                                 </Suspense>
                             } />
                             <Route path="karigar" element={

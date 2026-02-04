@@ -70,6 +70,10 @@ export interface NotificationSettings {
     paymentReminders: boolean
     expenseAlerts: boolean
     dailySummary: boolean
+    // EmailJS Configuration
+    emailJsServiceId?: string
+    emailJsTemplateId?: string
+    emailJsPublicKey?: string
 }
 
 export interface KarigarSettings {
