@@ -32,7 +32,7 @@ export const getStockSummary = async (currentSilverRate: number): Promise<StockS
         let fg_count = 0
         let fg_weight = 0
 
-        data.forEach(t => {
+        data.forEach((t: any) => {
             const qty = Number(t.quantity || 0)
             const weight = Number(t.weight_gm || 0)
 

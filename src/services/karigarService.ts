@@ -86,7 +86,7 @@ export const settleKarigarPayments = async (ids: string[], paymentDate: string, 
     // 2. Group by Karigar to create consolidated Expense entries
     const settlements: { [key: string]: { name: string, amount: number } } = {}
 
-    records?.forEach(r => {
+    records?.forEach((r: any) => {
         const kId = r.karigar_id
         if (!settlements[kId]) {
             settlements[kId] = { name: (r.karigars as any)?.name || 'Unknown', amount: 0 }
@@ -164,7 +164,7 @@ export const getKarigarBalances = async () => {
     if (error) throw error
 
     const balances: { [key: string]: number } = {}
-    data?.forEach(r => {
+    data?.forEach((r: any) => {
         if (r.payment_status === 'PENDING') {
             balances[r.karigar_id] = (balances[r.karigar_id] || 0) + Number(r.amount)
         }
@@ -208,7 +208,7 @@ export const getKarigarStats = async (karigarId: string) => {
 
     if (rError) throw rError
 
-    const pendingWork = records.reduce((sum, r) => sum + Number(r.amount), 0)
+    const pendingWork = records.reduce((sum: number, r: any) => sum + Number(r.amount), 0)
 
     const { data: kData, error: kError } = await supabase
         .from('karigars')

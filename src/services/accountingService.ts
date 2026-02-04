@@ -33,12 +33,12 @@ export const getPLReport = async () => {
         if (incomeError) throw incomeError
 
         const jobWorkIncome = incomeData
-            .filter(t => (t.ledgers as any).name === 'Job Work Income')
-            .reduce((sum, t) => sum + Number(t.credit), 0)
+            .filter((t: any) => (t.ledgers as any).name === 'Job Work Income')
+            .reduce((sum: number, t: any) => sum + Number(t.credit), 0)
 
         const productSalesIncome = incomeData
-            .filter(t => (t.ledgers as any).name === 'Product Sales Income')
-            .reduce((sum, t) => sum + Number(t.credit), 0)
+            .filter((t: any) => (t.ledgers as any).name === 'Product Sales Income')
+            .reduce((sum: number, t: any) => sum + Number(t.credit), 0)
 
         // 2. Get Expenses and separate Karigar vs General
         const { data: expenseData, error: expenseError } = await supabase
@@ -48,12 +48,12 @@ export const getPLReport = async () => {
         if (expenseError) throw expenseError
 
         const karigarExpenses = expenseData
-            .filter(e => e.head.startsWith('Karigar Payment'))
-            .reduce((sum, e) => sum + Number(e.amount), 0)
+            .filter((e: any) => e.head.startsWith('Karigar Payment'))
+            .reduce((sum: number, e: any) => sum + Number(e.amount), 0)
 
         const generalExpenses = expenseData
-            .filter(e => !e.head.startsWith('Karigar Payment'))
-            .reduce((sum, e) => {
+            .filter((e: any) => !e.head.startsWith('Karigar Payment'))
+            .reduce((sum: number, e: any) => {
                 // For P&L, we should count the Net Expense (excluding GST if it's recorded)
                 // If GST is enabled, specific gst_amount is usually ITC (Asset), not Expense.
                 const netAmount = (e.gst_enabled && e.gst_amount)

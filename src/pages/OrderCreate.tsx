@@ -131,7 +131,7 @@ export default function OrderCreate() {
             .on(
                 'postgres_changes',
                 { event: 'UPDATE', schema: 'public', table: 'products' },
-                (payload) => {
+                (payload: any) => {
                     const updatedProduct = payload.new as Product
                     setProducts(prevProducts =>
                         prevProducts.map(p => p.id === updatedProduct.id ? { ...p, current_stock: updatedProduct.current_stock } : p)

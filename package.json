@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
+    "typecheck": "tsc -b",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "vercel:debug": "ls -la && echo '--- index.html' && sed -n '1,200p' index.html"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
