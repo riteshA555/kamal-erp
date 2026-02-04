@@ -630,3 +630,169 @@ tr:hover {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
+
+/* ============================================
+   MOBILE RESPONSIVE DESIGN
+   ============================================ */
+
+/* Desktop-first: Sidebar visible by default */
+@media (min-width: 769px) {
+  .sidebar-desktop {
+    transform: translateX(0) !important;
+  }
+
+  .main-content {
+    margin-left: 220px !important;
+  }
+
+  .mobile-only-close,
+  .mobile-menu-btn {
+    display: none !important;
+  }
+}
+
+/* Tablet: 768px and below */
+@media (max-width: 768px) {
+  .main-content {
+    margin-left: 0 !important;
+  }
+
+  .sidebar-desktop {
+    width: 280px !important;
+  }
+
+  /* Responsive tables */
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Card layout for tables */
+  .mobile-card-view {
+    display: block !important;
+  }
+
+  .mobile-card-view tbody {
+    display: block;
+  }
+
+  .mobile-card-view tr {
+    display: block;
+    margin-bottom: 1rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1rem;
+    background: var(--color-surface);
+  }
+
+  .mobile-card-view td {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border: none;
+  }
+
+  .mobile-card-view td:before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+
+  .mobile-card-view thead {
+    display: none;
+  }
+
+  /* Responsive grid */
+  .grid-responsive {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)) !important;
+  }
+
+  /* Touch-friendly buttons */
+  button,
+  .btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Responsive forms */
+  .form-responsive {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Responsive modals */
+  .modal-responsive {
+    width: 95% !important;
+    max-width: 95% !important;
+    margin: 1rem !important;
+  }
+}
+
+/* Mobile: 480px and below */
+@media (max-width: 480px) {
+  :root {
+    --text-xs: 0.7rem;
+    --text-sm: 0.8rem;
+    --text-base: 0.9rem;
+    --text-lg: 1rem;
+    --text-xl: 1.1rem;
+    --text-2xl: 1.25rem;
+    --text-3xl: 1.5rem;
+  }
+
+  /* Smaller padding on mobile */
+  .container-mobile {
+    padding: 0.75rem !important;
+  }
+
+  /* Stack flex items */
+  .flex-stack-mobile {
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+  }
+
+  /* Full width buttons */
+  .btn-mobile-full {
+    width: 100% !important;
+  }
+
+  /* Smaller charts */
+  canvas {
+    max-height: 200px !important;
+  }
+
+  /* Responsive dashboard cards */
+  .dashboard-card {
+    min-width: 100% !important;
+  }
+}
+
+/* Utility Classes */
+.hide-mobile {
+  display: block;
+}
+
+.show-mobile {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .hide-mobile {
+    display: none !important;
+  }
+
+  .show-mobile {
+    display: block !important;
+  }
+}
+
+/* Touch-friendly spacing */
+@media (hover: none) and (pointer: coarse) {
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    min-height: 44px;
+  }
+}
