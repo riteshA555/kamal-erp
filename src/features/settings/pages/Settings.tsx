@@ -349,7 +349,7 @@ function BusinessProfileForm({ settings, onChange }: { settings: BusinessProfile
     }
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+        <div className="grid-responsive" style={{ gap: '1.5rem' }}>
             <FormField label="Business Name" required>
                 <input
                     type="text"
@@ -527,7 +527,7 @@ function InvoiceSettingsForm({ settings, onChange }: { settings: InvoiceSettings
     }
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+        <div className="grid-responsive" style={{ gap: '1.5rem' }}>
             <FormField label="Invoice Prefix" help="Appears before invoice number">
                 <input
                     type="text"
@@ -647,7 +647,7 @@ function GSTSettingsForm({ settings, onChange }: { settings: GSTSettings, onChan
     ]
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+        <div className="grid-responsive" style={{ gap: '1.5rem' }}>
             <FormField label="GST Rate: Job Work (Client Material)" help="Standard rate for services (e.g. 5%)">
                 <select
                     value={settings.defaultGstRateJobWork}
@@ -821,7 +821,7 @@ function InventorySettingsForm({ settings, onChange }: { settings: InventorySett
     }
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+        <div className="grid-responsive" style={{ gap: '1.5rem' }}>
             <FormField label="Low Stock Threshold" help="Alert when stock falls below this">
                 <input
                     type="number"
@@ -894,7 +894,7 @@ function PricingSettingsForm({ settings, onChange }: { settings: PricingSettings
     }
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+        <div className="grid-responsive" style={{ gap: '1.5rem' }}>
             <FormField label="Default Profit Margin (%)" help="Applied to new products">
                 <input
                     type="number"
@@ -951,7 +951,7 @@ function NotificationSettingsForm({ settings, onChange }: { settings: Notificati
     }
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+        <div className="grid-responsive" style={{ gap: '1.5rem' }}>
             <FormField label="Email Notifications" style={{ gridColumn: '1 / -1' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
@@ -1072,7 +1072,7 @@ function KarigarSettingsForm({ settings, onChange }: { settings: KarigarSettings
     }
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+        <div className="grid-responsive" style={{ gap: '1.5rem' }}>
             <FormField label="Default Rate Type">
                 <select
                     value={settings.defaultRateType}
@@ -1147,7 +1147,7 @@ function CustomerSettingsForm({ settings, onChange }: { settings: CustomerSettin
     }
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+        <div className="grid-responsive" style={{ gap: '1.5rem' }}>
             <FormField label="Default Credit Limit (₹)" help="For new customers">
                 <input
                     type="number"
@@ -1231,7 +1231,7 @@ function SystemSettingsForm({ settings, onChange, onFactoryReset }: {
     }
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+        <div className="grid-responsive" style={{ gap: '1.5rem' }}>
             <FormField label="Performance Mode" help="Balance between speed and detail">
                 <select
                     value={settings.performanceMode}

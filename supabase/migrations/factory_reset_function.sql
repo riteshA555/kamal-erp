@@ -6,34 +6,34 @@ RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
+DECLARE
+    v_user_id UUID := auth.uid();
 BEGIN
-    -- Delete all orders and related data
-    DELETE FROM order_items WHERE TRUE;
-    DELETE FROM orders WHERE TRUE;
+    -- Security Check: Ensure user is logged in
+    IF v_user_id IS NULL THEN
+        RAISE EXCEPTION 'Not authenticated';
+    END IF;
+
+    -- 1. Operational/Transaction Data (Only delete current user's data)
+    DELETE FROM order_items WHERE user_id = v_user_id;
+    DELETE FROM transactions WHERE user_id = v_user_id;
+    DELETE FROM stock_transactions WHERE user_id = v_user_id;
+    DELETE FROM karigar_work_records WHERE user_id = v_user_id;
     
-    -- Delete all products
-    DELETE FROM products WHERE TRUE;
+    -- 2. Master Data
+    DELETE FROM orders WHERE user_id = v_user_id;
+    DELETE FROM products WHERE user_id = v_user_id;
+    DELETE FROM karigars WHERE user_id = v_user_id;
+    DELETE FROM expenses WHERE user_id = v_user_id;
     
-    -- Delete all inventory
-    DELETE FROM inventory WHERE TRUE;
+    -- 3. Accounting
+    -- Delete only this user's ledgers
+    DELETE FROM ledgers WHERE user_id = v_user_id;
     
-    -- Delete all contacts
-    DELETE FROM customers WHERE TRUE;
-    DELETE FROM vendors WHERE TRUE;
-    DELETE FROM karigars WHERE TRUE;
+    -- 4. Settings
+    DELETE FROM settings WHERE user_id = v_user_id;
     
-    -- Delete all transactions
-    DELETE FROM transactions WHERE TRUE;
-    DELETE FROM karigar_settlements WHERE TRUE;
-    
-    -- Delete all expenses
-    DELETE FROM expenses WHERE TRUE;
-    
-    -- Reset settings to defaults (optional - keep settings)
-    -- DELETE FROM settings WHERE TRUE;
-    
-    -- Note: We do NOT delete users from auth.users
-    -- Users should remain for re-login after reset
+    -- Note: silver_rates are kept as they are global market rates.
 END;
 $$;
 

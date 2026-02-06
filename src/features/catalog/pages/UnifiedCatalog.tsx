@@ -278,7 +278,7 @@ export default function UnifiedCatalog() {
                         </button>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2rem' }}>
+                    <div className="grid-responsive" style={{ gap: '2rem' }}>
                         <div style={{ gridColumn: '1 / -1' }}>
                             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '0.4rem' }}>Nama (Item Name)</label>
                             <input
@@ -484,7 +484,7 @@ export default function UnifiedCatalog() {
                 </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
+            <div className="grid-responsive" style={{ gap: '1.5rem' }}>
                 {tab === 'Products' ? (
                     filteredProducts.length === 0 ? <p style={{ gridColumn: '1 / -1', textAlign: 'center', color: '#64748b' }}>No products found.</p> :
                         filteredProducts.map(p => (

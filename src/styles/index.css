@@ -631,14 +631,41 @@ tr:hover {
   outline-offset: 2px;
 }
 
+/* Global Responsive Resets */
+img,
+video,
+iframe,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
 /* ============================================
    MOBILE RESPONSIVE DESIGN
    ============================================ */
+
+/* Mobile-first Layout Adjustments */
+@media (max-width: 768px) {
+
+  /* Prevent horizontal scroll on root */
+  body,
+  #root {
+    overflow-x: hidden;
+    width: 100%;
+    position: relative;
+  }
+
+  /* Flex children shrinking */
+  #root>* {
+    min-width: 0;
+  }
+}
 
 /* Desktop-first: Sidebar visible by default */
 @media (min-width: 769px) {
   .sidebar-desktop {
     transform: translateX(0) !important;
+    visibility: visible !important;
   }
 
   .main-content {
@@ -655,10 +682,16 @@ tr:hover {
 @media (max-width: 768px) {
   .main-content {
     margin-left: 0 !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden;
   }
 
   .sidebar-desktop {
     width: 280px !important;
+    /* Ensure it doesn't cause scroll when off-canvas */
+    max-width: 85vw;
   }
 
   /* Responsive tables */

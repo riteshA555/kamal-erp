@@ -204,7 +204,7 @@ export default function StockManagement() {
             </div>
 
             {/* Summary Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '2.5rem' }}>
+            <div className="grid-responsive" style={{ gap: '1.5rem', marginBottom: '2.5rem' }}>
                 <SummaryCard
                     title="Raw Silver Stock"
                     value={`${(summary.raw_silver / 1000).toFixed(2)} kg`}
@@ -262,7 +262,7 @@ export default function StockManagement() {
                         </div>
 
                         <div style={{ overflowX: 'auto', marginBottom: '3rem' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }} className="mobile-card-view">
                                 <thead>
                                     <tr style={{ background: 'var(--color-bg)', borderBottom: '1px solid var(--color-border)' }}>
                                         <th style={thStyle}>Product ID</th>
@@ -275,12 +275,12 @@ export default function StockManagement() {
                                 <tbody>
                                     {filteredFG.map(p => (
                                         <tr key={p.id} style={{ borderBottom: '1px solid #f8fafc' }}>
-                                            <td style={tdStyle}>{p.id.slice(0, 8).toUpperCase()}</td>
-                                            <td style={tdStyle}>
+                                            <td data-label="Product ID" style={tdStyle}>{p.id.slice(0, 8).toUpperCase()}</td>
+                                            <td data-label="Product Name" style={tdStyle}>
                                                 <div style={{ fontWeight: 600 }}>{p.name}</div>
                                                 <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{p.category}</div>
                                             </td>
-                                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>
+                                            <td data-label="Quantity" style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>
                                                 <span style={{ color: p.current_stock < (invSettings?.lowStockThreshold || 10) ? '#ef4444' : 'inherit' }}>
                                                     {p.current_stock} pcs
                                                 </span>
@@ -290,8 +290,8 @@ export default function StockManagement() {
                                                     </span>
                                                 )}
                                             </td>
-                                            <td style={{ ...tdStyle, textAlign: 'right' }}>{p.default_weight}g</td>
-                                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>
+                                            <td data-label="Avg Weight" style={{ ...tdStyle, textAlign: 'right' }}>{p.default_weight}g</td>
+                                            <td data-label="Total Silver" style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>
                                                 {(p.current_stock * p.default_weight).toFixed(0)}g
                                             </td>
                                         </tr>
@@ -307,7 +307,7 @@ export default function StockManagement() {
                                 <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b' }}>तैयार माल की आवाजाही का इतिहास</p>
                             </div>
                             <div style={{ overflowX: 'auto' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }} className="mobile-card-view">
                                     <thead>
                                         <tr style={{ background: '#f8fafc', borderBottom: '1px solid var(--color-border)' }}>
                                             <th style={thStyle}>Date</th>
@@ -332,19 +332,19 @@ export default function StockManagement() {
                                                 const isIn = t.type === 'PRODUCTION' || t.type === 'RAW_IN';
                                                 return (
                                                     <tr key={t.id} style={{ borderBottom: '1px solid #f8fafc' }}>
-                                                        <td style={tdStyle}>{new Date(t.date).toLocaleDateString()}</td>
-                                                        <td style={tdStyle}>{getStatusBadge(t.type)}</td>
-                                                        <td style={tdStyle}>
+                                                        <td data-label="Date" style={tdStyle}>{new Date(t.date).toLocaleDateString()}</td>
+                                                        <td data-label="Type" style={tdStyle}>{getStatusBadge(t.type)}</td>
+                                                        <td data-label="Product" style={tdStyle}>
                                                             <div style={{ fontWeight: 600 }}>{product?.name || 'Unknown Product'}</div>
                                                             <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>ID: {t.product_id?.slice(0, 8)}</div>
                                                         </td>
-                                                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: isIn ? '#059669' : '#e11d48' }}>
+                                                        <td data-label="Qty" style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: isIn ? '#059669' : '#e11d48' }}>
                                                             {isIn ? '+' : '-'}{t.quantity}
                                                         </td>
-                                                        <td style={{ ...tdStyle, textAlign: 'right' }}>
+                                                        <td data-label="Weight" style={{ ...tdStyle, textAlign: 'right' }}>
                                                             {t.weight_gm ? `${t.weight_gm}g` : '-'}
                                                         </td>
-                                                        <td style={{ ...tdStyle, fontSize: '0.8rem' }}>
+                                                        <td data-label="Source/Note" style={{ ...tdStyle, fontSize: '0.8rem' }}>
                                                             <div style={{ fontWeight: 500 }}>{t.source || '-'}</div>
                                                             <div style={{ color: '#94a3b8' }}>{t.note || ''}</div>
                                                         </td>

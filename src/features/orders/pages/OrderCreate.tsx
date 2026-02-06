@@ -441,7 +441,7 @@ export default function OrderCreate() {
             </div>
 
             {/* MAIN SPLIT LAYOUT */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(400px, 1.2fr) minmax(350px, 0.8fr)', gap: '1.5rem' }}>
+            <div className="grid-responsive" style={{ gap: '1.5rem' }}>
 
                 {/* LEFT: WORKBENCH */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>

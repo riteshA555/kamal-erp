@@ -99,7 +99,7 @@ export default function SilverRateManager() {
             </header>
 
             {/* Top Stat Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem', marginBottom: '3rem' }}>
+            <div className="grid-responsive" style={{ gap: '2rem', marginBottom: '3rem' }}>
                 {/* Card 1: Today's Rate (per Kg) */}
                 <div style={{ background: 'white', padding: '1.5rem', borderRadius: '16px', border: '1px solid #f1f5f9', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', borderLeft: '5px solid #f59e0b' }}>
                     <div style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 600, marginBottom: '0.75rem' }}>
@@ -144,9 +144,7 @@ export default function SilverRateManager() {
                     <span style={{ display: 'block', fontSize: '0.9rem', fontWeight: 400, color: '#64748b', marginTop: '0.3rem' }}>Aaj ka bhav update karein</span>
                 </h3>
 
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                <div className="grid-responsive" style={{
                     gap: '2rem',
                     alignItems: 'flex-end'
                 }}>

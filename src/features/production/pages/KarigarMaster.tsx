@@ -193,7 +193,7 @@ export default function KarigarMaster() {
                 </div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
+            <div className="grid-responsive">
                 {karigars.map(k => {
                     const balance = balances[k.id] || 0
                     return (
